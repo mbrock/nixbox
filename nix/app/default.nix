@@ -114,6 +114,31 @@ let
     set(CMAKE_CXX_STANDARD_LIBRARIES "" CACHE STRING "")
   '';
 
+  # Meson finds cross files by name in $XDG_DATA_DIRS/meson/cross, so the dev
+  # shell's `meson setup build --cross-file xbox` needs no path. The compiler
+  # defaults to the static CRT; Meson must agree (b_vscrt) and must not add
+  # desktop default libraries (winlibs).
+  mesonCross = pkgs.writeTextDir "share/meson/cross/xbox" ''
+    [binaries]
+    c = '${appCC}/bin/x86_64-pc-windows-msvc-clang'
+    cpp = '${appCC}/bin/x86_64-pc-windows-msvc-clang++'
+    ar = '${appCC}/bin/x86_64-pc-windows-msvc-ar'
+    strip = '${appCC}/bin/x86_64-pc-windows-msvc-strip'
+    # Nixpkgs' target pkg-config wrapper, from pkgsXbox.buildPackages.pkg-config.
+    pkg-config = 'x86_64-pc-windows-msvc-pkg-config'
+
+    [built-in options]
+    b_vscrt = 'mt'
+    c_winlibs = []
+    cpp_winlibs = []
+
+    [host_machine]
+    system = 'windows'
+    cpu_family = 'x86_64'
+    cpu = 'x86_64'
+    endian = 'little'
+  '';
+
   packageTools = [
     python
     llvmPackages.llvm
@@ -163,6 +188,10 @@ let
       app = stdenv.mkDerivation (
         {
           cmakeFlags = [ "-DCMAKE_TOOLCHAIN_FILE=${toolchainFile}" ] ++ (args.cmakeFlags or [ ]);
+          # After Nixpkgs' own cross file, so these settings win.
+          mesonFlags = [ "--cross-file=${mesonCross}/share/meson/cross/xbox" ] ++ (args.mesonFlags or [ ]);
+          # Nixpkgs defaults Meson to the unoptimized "plain".
+          mesonBuildType = "release";
           buildInputs = lib.optional (projection != null) projection ++ (args.buildInputs or [ ]);
         }
         // removeAttrs args [
@@ -179,6 +208,7 @@ let
           "idl"
           "entryPoint"
           "cmakeFlags"
+          "mesonFlags"
           "buildInputs"
         ]
       );
@@ -234,6 +264,9 @@ let
           deployTool
         ];
         CMAKE_TOOLCHAIN_FILE = toolchainFile;
+        shellHook = ''
+          export XDG_DATA_DIRS=${mesonCross}/share:''${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
+        '';
       };
     in
     pkgs.runCommand "${pname}-${version}-msix"
@@ -299,6 +332,7 @@ in
     stdenv
     mkXboxApp
     toolchainFile
+    mesonCross
     compileIdl
     compileShaders
     deployTool

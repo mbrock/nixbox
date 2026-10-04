@@ -76,7 +76,7 @@
       };
       templates.game = {
         path = ./templates/game;
-        description = "A Direct3D 12 game for Xbox, built with CMake";
+        description = "A Direct3D 12 game for Xbox, built with Meson";
       };
       checks.${system} = {
         xbox-compiler = import ./nix/check-compiler.nix {

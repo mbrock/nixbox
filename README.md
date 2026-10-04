@@ -65,7 +65,7 @@ nix develop
 make deploy
 ```
 
-The template is a full-screen Direct3D 12 game built with CMake. `mkXboxApp`
+The template is a full-screen Direct3D 12 game built with Meson; CMake works too. `mkXboxApp`
 takes an ordinary derivation, using any build system and any `pkgsXbox`
 libraries, and produces an installable package. No Visual Studio project or
 Wine is involved. See [building apps](docs/apps.md).

@@ -8,13 +8,13 @@ xbox.mkXboxApp {
   src = xbox.pkgs.lib.fileset.toSource {
     root = ./.;
     fileset = xbox.pkgs.lib.fileset.unions [
-      ./CMakeLists.txt
+      ./meson.build
       ./main.cpp
       ./Cube.hlsl
     ];
   };
   nativeBuildInputs = with xbox.pkgs; [
-    cmake
+    meson
     ninja
     directx-shader-compiler
   ];

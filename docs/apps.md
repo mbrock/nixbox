@@ -17,7 +17,7 @@ UWP_DEVICE_URL=https://your-xbox.example nix run .#deploy
 ```
 
 The template is a full-screen Direct3D 12 cube on `CoreApplication`, built
-with CMake, which also compiles its HLSL with DXC; the left stick spins it.
+with Meson, which also compiles its HLSL with DXC; the left stick spins it.
 Its [game.nix](../templates/game/game.nix) is the whole description:
 
 ```nix
@@ -25,7 +25,7 @@ xbox.mkXboxApp {
   pname = "game";
   version = "0.1.0";
   src = ./.;
-  nativeBuildInputs = with xbox.pkgs; [ cmake ninja directx-shader-compiler ];
+  nativeBuildInputs = with xbox.pkgs; [ meson ninja directx-shader-compiler ];
   buildInputs = [ xbox.pkgsXbox.zlib ];   # any pkgsXbox libraries
 }
 ```
@@ -40,24 +40,47 @@ game's dev shell:
 
 ```sh
 nix develop
-make                  # cmake -B build, then cmake --build build
+make                  # meson setup build --cross-file xbox, then meson compile
 make deploy           # install to build/install, package, deploy, screenshot
 ```
 
-The shell has the same compiler, flags, and libraries as `nix build`.
-`CMAKE_TOOLCHAIN_FILE` points CMake at the Xbox, so `cmake -B build` needs no
-options, and `CC`/`CXX` are the cross compilers for plain Makefiles. Two
-commands package the output with the same steps as the Nix build:
+The shell has the same compiler, flags, and libraries as `nix build`, set up
+for each build system (see below). Two commands package the output with the
+same steps as the Nix build:
 
 - `xbox-package [PREFIX] [OUT]` packages an install prefix (default
   `build/install`) into `OUT` (default `build/package`);
 - `xbox-deploy [ARGS…]` runs `xbox-package` with the defaults, then deploys
   `build/package`, taking the deploy options below.
 
-The template's Makefile is three lines around CMake; any build system that
+The template's Makefile is three lines around Meson; any build system that
 installs `bin/<pname>.exe` into a prefix works the same way. After an edit,
 `make deploy` shows the change on the console in about fifteen seconds, most
 of it installing.
+
+## Build systems
+
+nixbox configures each build system for the Xbox, in `nix build` and in the
+dev shell alike. In all of them, `pkgsXbox` libraries in `buildInputs` are on
+the compiler's include and library paths.
+
+**Meson** (the template). The dev shell has a cross file named `xbox`, so
+`meson setup build --cross-file xbox` targets the console; Nix builds pass the
+same file, as `release`. It keeps Meson on the compiler's static CRT and away
+from desktop default libraries. Link SDK libraries by name
+(`link_args: ['-ld3d12']`). For `dependency()`, add
+`xbox.pkgsXbox.buildPackages.pkg-config` to `nativeBuildInputs`; zlib, for
+one, is then found through its `.pc` file. Compile shaders with a
+`custom_target` around `dxc`, as the template's `meson.build` does.
+
+**CMake** ([the XAML sample](../example/CMakeLists.txt)).
+`CMAKE_TOOLCHAIN_FILE` (also `xbox.toolchainFile`) points `cmake -B build` at
+the console, selects the static CRT, and drops the desktop default
+libraries; `find_library` and `find_package` search `buildInputs`. It also
+puts nixbox's CMake modules on the module path, for `nixbox_shader` below.
+
+**Anything else.** `CC` and `CXX` are the cross compilers, already carrying
+the SDK, DirectX-Headers, and link settings.
 
 ## mkXboxApp
 
@@ -94,8 +117,7 @@ Compared with the library compiler, the app compiler:
 - links `WindowsApp.lib` and the AppContainer image flag, plus two small import
   libraries that resolve a few CRT and unwinder functions from DLLs the Xbox
   app container actually has;
-- for CMake, uses a toolchain file (also `xbox.toolchainFile`) that selects
-  the static CRT and drops the desktop default libraries.
+- configures CMake and Meson as described above.
 
 Packaging then sets the GUI subsystem at version 6.2 and audits the
 executable's imports, failing builds the console would refuse to launch.
@@ -160,9 +182,9 @@ curl -o game.dmp "$UWP_DEVICE_URL/api/debug/dump/usermode/crashdump?packageFullN
 
 LLDB opens the dump (`lldb -c game.dmp`).
 
-The dev shell's Makefile builds with debug info, so `build/package/symbols/`
-has the PDB; for a Nix build, use `cmakeFlags = [
-"-DCMAKE_BUILD_TYPE=RelWithDebInfo" ]` and `dontStrip = true`.
+The template's and the sample's Makefiles build with debug info, so `build/package/symbols/`
+has the PDB; for a Nix build, use `mesonBuildType = "debugoptimized"` (or
+`cmakeFlags = [ "-DCMAKE_BUILD_TYPE=RelWithDebInfo" ]`) and `dontStrip = true`.
 `llvm-symbolizer --obj=game.exe`
 then turns the dump's stack addresses, rebased to `0x140000000`, into source
 lines.
