@@ -87,26 +87,29 @@
         hello-xbox = pkgsXbox.hello;
         luau-xbox = pkgsXbox.luau;
       };
-      devShells.${system}.default = pkgs.mkShell {
-        packages = [
-          toolchain.tools
-          pkgs.git
-          pkgs.openssl
-        ];
-        inherit (toolchain) UWP_XWIN_ROOT UWP_SDK_ROOT UWP_CPPWINRT_EXE;
-        UWP_MAKEPRI_X86 = "1";
-        XBOX_ZLIB_INCLUDE_DIR = "${pkgs.lib.getDev pkgsXbox.zlib}/include";
-        XBOX_ZLIB_LIBRARY = "${pkgs.lib.getLib pkgsXbox.zlib}/lib/zs.lib";
-        XBOX_LUAU_ROOT = pkgsXbox.luau;
-        XBOX_SHADER_INCLUDE_DIR = "${toolchain.shaders}/include";
-        XBOX_DIRECTX_HEADERS_INCLUDE_DIR = "${pkgs.directx-headers}/include/directx";
-        XBOX_CXX_HEADERS = xbox.cxxHeaders;
-        WINEARCH = "wow64";
-        WINEDEBUG = "-all";
-        WINEDLLOVERRIDES = "mscoree,mshtml=;msxml6=n,b";
-        shellHook = ''
-          export WINEPREFIX="''${WINEPREFIX:-''${XDG_CACHE_HOME:-$HOME/.cache}/xbox-uwp/wine}"
-        '';
+      devShells.${system} = {
+        game = game.devShell;
+        default = pkgs.mkShell {
+          packages = [
+            toolchain.tools
+            pkgs.git
+            pkgs.openssl
+          ];
+          inherit (toolchain) UWP_XWIN_ROOT UWP_SDK_ROOT UWP_CPPWINRT_EXE;
+          UWP_MAKEPRI_X86 = "1";
+          XBOX_ZLIB_INCLUDE_DIR = "${pkgs.lib.getDev pkgsXbox.zlib}/include";
+          XBOX_ZLIB_LIBRARY = "${pkgs.lib.getLib pkgsXbox.zlib}/lib/zs.lib";
+          XBOX_LUAU_ROOT = pkgsXbox.luau;
+          XBOX_SHADER_INCLUDE_DIR = "${toolchain.shaders}/include";
+          XBOX_DIRECTX_HEADERS_INCLUDE_DIR = "${pkgs.directx-headers}/include/directx";
+          XBOX_CXX_HEADERS = xbox.cxxHeaders;
+          WINEARCH = "wow64";
+          WINEDEBUG = "-all";
+          WINEDLLOVERRIDES = "mscoree,mshtml=;msxml6=n,b";
+          shellHook = ''
+            export WINEPREFIX="''${WINEPREFIX:-''${XDG_CACHE_HOME:-$HOME/.cache}/xbox-uwp/wine}"
+          '';
+        };
       };
     };
 }

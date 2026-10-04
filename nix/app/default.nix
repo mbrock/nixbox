@@ -32,7 +32,7 @@ let
   appCC = xboxCC.override (old: {
     extraBuildCommands = old.extraBuildCommands + ''
       echo '-I${pkgs.directx-headers}/include/directx' >> "$out/nix-support/cc-cflags"
-      echo '${reroutes}/lib/appcontainer-pointers.lib ${reroutes}/lib/appcontainer-ntdll.lib WindowsApp.lib /appcontainer' >> "$out/nix-support/cc-ldflags"
+      echo '${reroutes}/lib/appcontainer-pointers.lib ${reroutes}/lib/appcontainer-ntdll.lib WindowsApp.lib /appcontainer /ignore:4099' >> "$out/nix-support/cc-ldflags"
     '';
   });
   stdenv = pkgsXbox.stdenv.override { cc = appCC; };
@@ -93,10 +93,41 @@ let
       </Package>
     '';
 
+  # CMake reads CMAKE_TOOLCHAIN_FILE from the environment too, so the dev shell
+  # configures a plain `cmake -B build` exactly as the Nix build does. CMake
+  # otherwise picks the DLL runtime, which the app container lacks, and links
+  # desktop kernel32/ole32/user32… ahead of WindowsApp.lib, whose API-set
+  # imports are the ones the console resolves.
+  toolchainFile = pkgs.writeText "xbox-toolchain.cmake" ''
+    set(CMAKE_SYSTEM_NAME Windows)
+    set(CMAKE_SYSTEM_PROCESSOR x86_64)
+    set(CMAKE_C_COMPILER ${appCC}/bin/x86_64-pc-windows-msvc-clang)
+    set(CMAKE_CXX_COMPILER ${appCC}/bin/x86_64-pc-windows-msvc-clang++)
+    set(CMAKE_AR ${appCC}/bin/x86_64-pc-windows-msvc-ar CACHE FILEPATH "")
+    set(CMAKE_RANLIB ${appCC}/bin/x86_64-pc-windows-msvc-ranlib CACHE FILEPATH "")
+    set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded CACHE STRING "")
+    set(CMAKE_C_STANDARD_LIBRARIES "" CACHE STRING "")
+    set(CMAKE_CXX_STANDARD_LIBRARIES "" CACHE STRING "")
+  '';
+
+  packageTools = [
+    python
+    llvmPackages.llvm
+    pkgs.file
+  ];
+
+  deployTool = pkgs.writeShellApplication {
+    name = "nixbox-deploy";
+    runtimeInputs = [ python ];
+    text = ''exec python3 ${./deploy.py} "$@"'';
+  };
+
   # Build an Xbox app with any build system. The build installs its
   # executable into bin/ (CMake's default) and data into share/<pname>/;
   # both become the package root. The result holds layout/ and <pname>.msix;
-  # signing happens at deployment, outside Nix, with a local key.
+  # signing happens at deployment, outside Nix, with a local key. Its
+  # devShell builds the same thing incrementally outside Nix.
   mkXboxApp =
     {
       pname,
@@ -114,17 +145,9 @@ let
       ...
     }@args:
     let
-      # CMake otherwise picks the DLL runtime, which the app container lacks,
-      # and links desktop kernel32/ole32/user32… ahead of WindowsApp.lib, whose
-      # API-set imports are the ones the console resolves.
       app = stdenv.mkDerivation (
         {
-          cmakeFlags = [
-            "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
-            "-DCMAKE_C_STANDARD_LIBRARIES="
-            "-DCMAKE_CXX_STANDARD_LIBRARIES="
-          ]
-          ++ (args.cmakeFlags or [ ]);
+          cmakeFlags = [ "-DCMAKE_TOOLCHAIN_FILE=${toolchainFile}" ] ++ (args.cmakeFlags or [ ]);
         }
         // removeAttrs args [
           "identity"
@@ -157,43 +180,51 @@ let
               capabilities
               ;
           };
+      packageEnv = {
+        XBOX_PNAME = pname;
+        XBOX_EXECUTABLE = executable;
+        XBOX_MANIFEST = manifestFile;
+        XBOX_ASSETS = assets;
+        XBOX_AUDIT = "${inputs.uwp-crossbuild}/scripts/pe-import-audit.sh";
+      };
+      exports = lib.concatStrings (lib.mapAttrsToList (name: value: "export ${name}=${lib.escapeShellArg value}\n") packageEnv);
+
+      # xbox-package [PREFIX] [OUT]: the Nix build's packaging, for a local
+      # install prefix. xbox-deploy [ARGS…]: package build/install, then deploy.
+      xboxPackage = pkgs.writeShellApplication {
+        name = "xbox-package";
+        runtimeInputs = packageTools;
+        text = exports + ''
+          exec bash ${./package.sh} "''${1:-build/install}" "''${2:-build/package}"
+        '';
+      };
+      xboxDeploy = pkgs.writeShellApplication {
+        name = "xbox-deploy";
+        text = ''
+          ${lib.getExe xboxPackage} build/install build/package
+          exec ${lib.getExe deployTool} build/package "$@"
+        '';
+      };
+      devShell = (pkgsXbox.mkShell.override { inherit stdenv; }) {
+        inputsFrom = [ app ];
+        packages = [
+          xboxPackage
+          xboxDeploy
+          deployTool
+        ];
+        CMAKE_TOOLCHAIN_FILE = toolchainFile;
+      };
     in
     pkgs.runCommand "${pname}-${version}-msix"
-      {
-        nativeBuildInputs = [
-          python
-          llvmPackages.llvm
-          pkgs.file
-        ];
-        passthru = { inherit app; };
-      }
-      ''
-        mkdir layout symbols
-        cp -r ${app}/bin/. layout/
-        # Debug symbols stay out of the package, beside it for crash dumps.
-        find layout -name '*.pdb' -exec mv -t symbols {} +
-        if [[ -d ${app}/share/${pname} ]]; then
-          cp -r ${app}/share/${pname}/. layout/
-        fi
-        cp ${manifestFile} layout/AppxManifest.xml
-        mkdir -p layout/Assets
-        cp -r ${assets}/. layout/Assets/
-        chmod -R u+w layout
-        [[ -f layout/${executable} ]] || {
-          echo "The build installed no bin/${executable}" >&2
-          exit 1
+      (
+        packageEnv
+        // {
+          nativeBuildInputs = packageTools;
+          passthru = { inherit app devShell; };
         }
-        # The app container wants the GUI subsystem at version 6.02 or later;
-        # set it here so the build may link an ordinary main() or wWinMain().
-        llvm-objcopy --subsystem windows:6.2 layout/${executable}
-        bash ${inputs.uwp-crossbuild}/scripts/pe-import-audit.sh --allow-kernel32 layout/${executable}
-        openappx validate --root layout
-        mkdir "$out"
-        openappx pack --root layout --out "$out/${pname}.msix"
-        cp -r layout "$out/layout"
-        if [[ -n "$(ls symbols)" ]]; then
-          cp -r symbols "$out/symbols"
-        fi
+      )
+      ''
+        bash ${./package.sh} ${app} "$out"
       '';
 
   # Compile HLSL to DXIL with the native, signing DXC. Each entry becomes
@@ -214,12 +245,6 @@ let
       '') entries}
     '';
 
-  deployTool = pkgs.writeShellApplication {
-    name = "nixbox-deploy";
-    runtimeInputs = [ python ];
-    text = ''exec python3 ${./deploy.py} "$@"'';
-  };
-
   # `nix run` target that signs and deploys one package to the console.
   mkDeploy = package: {
     type = "app";
@@ -235,6 +260,7 @@ in
   inherit
     stdenv
     mkXboxApp
+    toolchainFile
     compileShaders
     deployTool
     mkDeploy

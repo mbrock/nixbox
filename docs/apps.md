@@ -17,21 +17,47 @@ UWP_DEVICE_URL=https://your-xbox.example nix run .#deploy
 ```
 
 The template is a full-screen Direct3D 12 cube on `CoreApplication`, built
-with CMake; the left stick spins it. Its [game.nix](../templates/game/game.nix)
-is the whole description:
+with CMake, which also compiles its HLSL with DXC; the left stick spins it.
+Its [game.nix](../templates/game/game.nix) is the whole description:
 
 ```nix
 xbox.mkXboxApp {
   pname = "game";
   version = "0.1.0";
   src = ./.;
-  nativeBuildInputs = [ xbox.pkgs.cmake xbox.pkgs.ninja ];
-  buildInputs = [ shaders xbox.pkgsXbox.zlib ];
+  nativeBuildInputs = with xbox.pkgs; [ cmake ninja directx-shader-compiler ];
+  buildInputs = [ xbox.pkgsXbox.zlib ];   # any pkgsXbox libraries
 }
 ```
 
 `xbox` is `nixbox.lib.x86_64-linux`. In this repository, `nix build .#game`
 builds the template and `nix run .#deploy-game` deploys it.
+
+## Hacking in a dev shell
+
+`nix build` is the reproducible build; day to day, build incrementally in the
+game's dev shell:
+
+```sh
+nix develop
+make                  # cmake -B build, then cmake --build build
+make deploy           # install to build/install, package, deploy, screenshot
+```
+
+The shell has the same compiler, flags, and libraries as `nix build`.
+`CMAKE_TOOLCHAIN_FILE` points CMake at the Xbox, so `cmake -B build` needs no
+options, and `CC`/`CXX` are the cross compilers for plain Makefiles. Two
+commands package the output with the same steps as the Nix build:
+
+- `xbox-package [PREFIX] [OUT]` packages an install prefix (default
+  `build/install`) into `OUT` (default `build/package`);
+- `xbox-deploy [ARGS…]` runs `xbox-package` with the defaults, then deploys
+  `build/package`, taking the deploy options below.
+
+The template's Makefile is three lines around CMake; any build system that
+installs `bin/<pname>.exe` into a prefix works the same way. After an edit,
+`make deploy` shows the change on the console in about fifteen seconds, most
+of it installing.
 
 ## mkXboxApp
 
@@ -60,7 +86,8 @@ Compared with the library compiler, the app compiler:
 - links `WindowsApp.lib` and the AppContainer image flag, plus two small import
   libraries that resolve a few CRT and unwinder functions from DLLs the Xbox
   app container actually has;
-- for CMake, selects the static CRT and drops the desktop default libraries.
+- for CMake, uses a toolchain file (also `xbox.toolchainFile`) that selects
+  the static CRT and drops the desktop default libraries.
 
 Packaging then sets the GUI subsystem at version 6.2 and audits the
 executable's imports, failing builds the console would refuse to launch.
@@ -76,7 +103,9 @@ xbox.compileShaders {
 ```
 
 Each entry becomes `include/<name>.h` with a byte array named `<name>`. Put the
-result in `buildInputs` to put it on the include path.
+result in `buildInputs` to put it on the include path. This suits build
+systems without their own shader step; the template compiles shaders in
+CMake instead, so they rebuild incrementally in the dev shell.
 
 ## Deploying
 
@@ -110,8 +139,10 @@ curl -o game.dmp "$UWP_DEVICE_URL/api/debug/dump/usermode/crashdump?packageFullN
 
 LLDB opens the dump (`lldb -c game.dmp`).
 
-Build with `cmakeFlags = [ "-DCMAKE_BUILD_TYPE=RelWithDebInfo" ]` and
-`dontStrip = true` for `result/symbols/*.pdb`; `llvm-symbolizer --obj=game.exe`
+The dev shell's Makefile builds with debug info, so `build/package/symbols/`
+has the PDB; for a Nix build, use `cmakeFlags = [
+"-DCMAKE_BUILD_TYPE=RelWithDebInfo" ]` and `dontStrip = true`.
+`llvm-symbolizer --obj=game.exe`
 then turns the dump's stack addresses, rebased to `0x140000000`, into source
 lines.
 

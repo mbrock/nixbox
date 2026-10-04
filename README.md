@@ -57,6 +57,10 @@ and signing details.
 nix flake init -t github:mbrock/nixbox#game
 nix build
 UWP_DEVICE_URL=https://your-xbox.example nix run .#deploy
+
+# Or iterate incrementally:
+nix develop
+make deploy
 ```
 
 The template is a full-screen Direct3D 12 game built with CMake. `mkXboxApp`
