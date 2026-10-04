@@ -9,3 +9,4 @@ result-*
 uwp-crossbuild/
 openappx/
 .xwin-cache/
+.amp/portals/*

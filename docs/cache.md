@@ -24,8 +24,24 @@ ${XDG_CONFIG_HOME:-$HOME/.config}/xbox-nix-cache/netrc
 ```
 
 `./build`, `./env`, and `./cache-publish` use it when present. Set
-`UWP_NIX_CACHE_NETRC` to override the path. Without that file, the wrappers
-build from source with normal Nix inputs.
+`UWP_NIX_CACHE_NETRC` to override the path.
+
+For Amp orbs, set these two secrets in your Amp project configuration before
+starting a fresh orb:
+
+| Secret | Value |
+| --- | --- |
+| `UWP_NIX_CACHE_USER` | Your cache HTTP username |
+| `UWP_NIX_CACHE_PASSWORD` | Your cache HTTP password |
+
+Orb setup, the automatic login-shell environment, `./build`, and `./env` use
+these together, taking precedence over a netrc file. They create a temporary
+mode-0600 netrc file, pass only its path to Nix, and remove it when Nix exits.
+Credentials are not written into the repository, persistent Nix configuration,
+or prepared development environments. Setting only one variable is an error.
+Without either the variables or a readable netrc file, these commands build
+from source with normal Nix inputs. `./cache-publish` still uses the netrc-file
+configuration above.
 
 On a cloud agent, supply netrc as a secret file with mode `0600`:
 

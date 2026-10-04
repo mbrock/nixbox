@@ -2,6 +2,30 @@
 
 [Back to the README](../README.md)
 
+## Amp orbs
+
+[`.agents/setup`](../.agents/setup) installs single-user Nix 2.34.1 with flakes
+enabled and prepares the locked `default`, `hello`, `game`, and `sdlgame`
+development shells. Amp snapshots the resulting Nix store, so fresh orbs reuse
+the toolchain, Windows SDK, Python packaging tools, and cross-built libraries
+instead of installing them for each thread. Shell profiles keep these
+dependencies rooted against Nix garbage collection; a warm setup lets Nix
+check the current flake rather than relying on a custom cache stamp.
+
+Non-interactive login shells inside this checkout automatically receive the
+complete default development environment, including its Wine settings and
+SDK paths. Use `nix develop .#hello`, `.#game`, or `.#sdlgame` for the respective
+app's incremental build environment. The hook does not activate outside this
+checkout or inside an existing Nix shell.
+
+Set `UWP_NIX_CACHE_USER` and `UWP_NIX_CACHE_PASSWORD` as Amp project secrets
+to substitute the prepared SDK and toolchain from the [binary cache](cache.md).
+Setup removes its temporary credential file before the snapshot is taken.
+Without credentials, setup uses public Nix substitutes and the pinned upstream
+downloads, which takes longer. Console credentials and signing keys are not
+needed, and setup never deploys. [`.agents/resume`](../.agents/resume) only
+checks that Nix is present; no dependencies are installed when an orb wakes.
+
 ## Build, sign, deploy
 
 ```sh

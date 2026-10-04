@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# No tunnels or services are required to build. Never install or authenticate
+# during resume; the prepared Nix store and login-shell hook survive sleep.
+test -x "$HOME/.nix-profile/bin/nix"
+echo "[resume] Nix ready; use ./env or nix develop .#hello for incremental builds"

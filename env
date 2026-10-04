@@ -2,15 +2,9 @@
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 cd "$root"
-cache_netrc=${UWP_NIX_CACHE_NETRC:-${XDG_CONFIG_HOME:-$HOME/.config}/xbox-nix-cache/netrc}
-nix_options=(--accept-flake-config)
-if [[ -r "$cache_netrc" ]]; then
-  nix_options+=(--option netrc-file "$cache_netrc")
-else
-  # Source builds also work on machines without a cache credential.
-  nix_options+=(--option extra-substituters "")
-fi
+source "$root/bin/nix-cache-options"
 if [[ $# -eq 0 ]]; then
-  exec nix develop "${nix_options[@]}" "$root"
+  nix develop "${nix_options[@]}" "$root"
+else
+  nix develop "${nix_options[@]}" "$root" --command "$@"
 fi
-exec nix develop "${nix_options[@]}" "$root" --command "$@"

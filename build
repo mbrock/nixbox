@@ -3,13 +3,7 @@
 #   ./build [OUTPUT] [NIX BUILD ARGS…]   (default output: hello)
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-cache_netrc=${UWP_NIX_CACHE_NETRC:-${XDG_CONFIG_HOME:-$HOME/.config}/xbox-nix-cache/netrc}
-nix_options=(--accept-flake-config)
-if [[ -r "$cache_netrc" ]]; then
-  nix_options+=(--option netrc-file "$cache_netrc")
-else
-  nix_options+=(--option extra-substituters "")
-fi
+source "$root/bin/nix-cache-options"
 output=${1:-hello}
 shift || true
 nix build "${nix_options[@]}" "$root#$output" "$@"

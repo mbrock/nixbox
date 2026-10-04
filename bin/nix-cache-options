@@ -1,0 +1,27 @@
+# Sourced by Nix entry points. The caller must not exec: its EXIT trap removes
+# the temporary credential file after Nix (including an interactive shell) exits.
+cache_netrc=${UWP_NIX_CACHE_NETRC:-${XDG_CONFIG_HOME:-$HOME/.config}/xbox-nix-cache/netrc}
+nix_options=(--accept-flake-config)
+if [[ -n "${UWP_NIX_CACHE_USER:-}" || -n "${UWP_NIX_CACHE_PASSWORD:-}" ]]; then
+  if [[ -z "${UWP_NIX_CACHE_USER:-}" || -z "${UWP_NIX_CACHE_PASSWORD:-}" ]]; then
+    echo 'Set both UWP_NIX_CACHE_USER and UWP_NIX_CACHE_PASSWORD for the binary cache.' >&2
+    exit 1
+  fi
+  cache_netrc=$(mktemp)
+  trap 'rm -f "$cache_netrc"' EXIT
+  # Quote netrc tokens, including whitespace, double quotes, and backslashes.
+  cache_user=${UWP_NIX_CACHE_USER//\\/\\\\}
+  cache_user=${cache_user//\"/\\\"}
+  cache_password=${UWP_NIX_CACHE_PASSWORD//\\/\\\\}
+  cache_password=${cache_password//\"/\\\"}
+  printf 'machine nix.swa.sh login "%s" password "%s"\n' \
+    "$cache_user" "$cache_password" > "$cache_netrc"
+  unset cache_user cache_password UWP_NIX_CACHE_USER UWP_NIX_CACHE_PASSWORD
+fi
+if [[ -r "$cache_netrc" ]]; then
+  nix_options+=(--option netrc-file "$cache_netrc")
+else
+  # Accepting flake config would re-enable its authenticated cache even after
+  # clearing extra-substituters. Leave only the normal public substitutes.
+  nix_options=(--no-accept-flake-config --option extra-substituters "")
+fi

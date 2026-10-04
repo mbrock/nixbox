@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$root"
+SECONDS=0
+
+echo "[setup] Checking Nix installation prerequisites"
+missing=()
+for package in ca-certificates curl xz-utils; do
+  if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -qx 'install ok installed'; then
+    missing+=("$package")
+  fi
+done
+if (( ${#missing[@]} )); then
+  sudo apt-get update
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y "${missing[@]}"
+fi
+
+if [[ ! -x "$HOME/.nix-profile/bin/nix" ]]; then
+  echo "[setup] Installing Nix 2.34.1 (single-user; no daemon required)"
+  installer=$(mktemp)
+  trap 'rm -f "$installer"' EXIT
+  curl --fail --location --retry 3 https://releases.nixos.org/nix/nix-2.34.1/install -o "$installer"
+  bash "$installer" --no-daemon --no-channel-add --yes
+  rm -f "$installer"
+  trap - EXIT
+fi
+# The installer cannot update this running process's environment.
+source "$HOME/.nix-profile/etc/profile.d/nix.sh"
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/nix"
+config="${XDG_CONFIG_HOME:-$HOME/.config}/nix/nix.conf"
+setting='extra-experimental-features = nix-command flakes'
+if ! grep -Fqx "$setting" "$config" 2>/dev/null; then
+  printf '\n%s\n' "$setting" >> "$config"
+fi
+
+# These profiles keep the shell closures alive across Nix garbage collection.
+# Cache credentials are temporary and removed before snapshot publication.
+source "$root/bin/nix-cache-options"
+state="$HOME/.cache/nixbox-orb"
+mkdir -p "$state"
+for shell in default hello game sdlgame; do
+  echo "[setup +${SECONDS}s] Preparing development shell: $shell"
+  nix develop "${nix_options[@]}" \
+    --no-update-lock-file --profile "$state/$shell" "$root#$shell" --command true
+done
+
+# Amp and supervised services use non-interactive login shells. Inject the
+# complete environment, including shellHook, without spawning a nested shell.
+cat > "$state/login.sh" <<EOF
+source "\$HOME/.nix-profile/etc/profile.d/nix.sh"
+if [[ -z "\${IN_NIX_SHELL:-}" && ( "\$PWD" == "$root" || "\$PWD" == "$root/"* ) ]]; then
+  if nixbox_env=\$(
+    source "$root/bin/nix-cache-options"
+    nix print-dev-env "\${nix_options[@]}" --no-update-lock-file "$root#default"
+  ); then
+    eval "\$nixbox_env"
+    eval "\${shellHook:-}"
+  fi
+  unset nixbox_env
+fi
+EOF
+marker='# nixbox orb development environment'
+if ! grep -Fqx "$marker" "$HOME/.bash_profile" 2>/dev/null; then
+  printf '\n%s\nsource "%s/login.sh"\n' "$marker" "$state" >> "$HOME/.bash_profile"
+fi
+echo "[setup +${SECONDS}s] Nix and all development shells ready"
