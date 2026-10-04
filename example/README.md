@@ -13,7 +13,7 @@ cross-compile at all.
 
 From the workspace root, run `./build`, `./env ./package`, then
 `./env python3 deploy.py --replace` with `UWP_DEVICE_URL` set to your Xbox Device
-Portal URL. See `../README.txt` for incremental builds.
+Portal URL. See [development](../docs/development.md) for incremental builds.
 The Nix build supplies the headers and static libraries from `pkgsXbox.zlib`
 and `pkgsXbox.luau`. The UI checks compression/decompression, then compiles and
 runs a Luau gameplay script on the console. That script calls native C++ three
