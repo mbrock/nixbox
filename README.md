@@ -7,7 +7,7 @@ and signing tools. Nix handles the downloads and setup; you write C++ and deploy
 the result to an Xbox in Developer Mode.
 
 The included app runs **Luau gameplay scripts on a real Xbox Series X**, calls
-back into C++, checks a zlib compression round-trip, and renders a **rotating Direct3D 11 cube**
+back into C++, checks a zlib compression round-trip, and renders a **rotating Direct3D 12 cube**
 inside a XAML `SwapChainPanel`. Built with LLVM 23,
 packaged and signed on Linux.
 

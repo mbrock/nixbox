@@ -62,7 +62,7 @@
 
   <ItemDefinitionGroup>
     <Link>
-      <AdditionalDependencies>d3d11.lib;dxgi.lib;$(ZlibLibrary);$(LuauRoot)/lib/Luau.VM.lib;$(LuauRoot)/lib/Luau.Compiler.lib;$(LuauRoot)/lib/Luau.Ast.lib;$(LuauRoot)/lib/Luau.Bytecode.lib;$(LuauRoot)/lib/Luau.Common.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d12.lib;dxgi.lib;$(ZlibLibrary);$(LuauRoot)/lib/Luau.VM.lib;$(LuauRoot)/lib/Luau.Compiler.lib;$(LuauRoot)/lib/Luau.Ast.lib;$(LuauRoot)/lib/Luau.Bytecode.lib;$(LuauRoot)/lib/Luau.Common.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 

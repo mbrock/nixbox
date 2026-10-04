@@ -1,12 +1,12 @@
 #pragma once
 
 #include "pch.h"
-#include <d3d11.h>
-#include <dxgi1_3.h>
+#include <d3d12.h>
+#include <dxgi1_4.h>
 
 namespace hello {
 
-// All panel, swap-chain, and immediate-context access stays on the UI thread.
+// All panel, swap-chain, and command-list access stays on the UI thread.
 // This small demo renders on XAML's frame callback, without a worker thread.
 class D3DView {
   public:
@@ -17,12 +17,16 @@ class D3DView {
     D3DView& operator=(D3DView const&) = delete;
 
   private:
+    static constexpr UINT FrameCount = 2;
+
     void Start();
     void Stop();
     void Frame();
     void CreateDevice();
     void Resize();
     void Draw(float angle);
+    void WaitForFence(UINT64 value) noexcept;
+    void WaitForGpu() noexcept;
     void ReleaseDevice();
 
     winrt::Windows::UI::Xaml::Controls::SwapChainPanel m_panel{nullptr};
@@ -36,17 +40,29 @@ class D3DView {
     bool m_presented = false;
     LARGE_INTEGER m_start{}, m_frequency{};
 
-    winrt::com_ptr<ID3D11Device> m_device;
-    winrt::com_ptr<ID3D11DeviceContext> m_context;
-    winrt::com_ptr<IDXGISwapChain2> m_swapChain;
-    winrt::com_ptr<ID3D11RenderTargetView> m_target;
-    winrt::com_ptr<ID3D11DepthStencilView> m_depth;
-    winrt::com_ptr<ID3D11VertexShader> m_vertexShader;
-    winrt::com_ptr<ID3D11PixelShader> m_pixelShader;
-    winrt::com_ptr<ID3D11InputLayout> m_inputLayout;
-    winrt::com_ptr<ID3D11Buffer> m_vertices, m_indices, m_scene;
-    winrt::com_ptr<ID3D11RasterizerState> m_rasterizer;
-    D3D11_VIEWPORT m_viewport{};
+    winrt::com_ptr<ID3D12Device> m_device;
+    winrt::com_ptr<ID3D12CommandQueue> m_queue;
+    winrt::com_ptr<ID3D12CommandAllocator> m_allocators[FrameCount];
+    winrt::com_ptr<ID3D12GraphicsCommandList> m_commands;
+    winrt::com_ptr<ID3D12Fence> m_fence;
+    winrt::handle m_fenceEvent;
+    UINT64 m_fenceValue = 0;
+    UINT64 m_frameFence[FrameCount]{};
+    UINT m_frame = 0;
+
+    winrt::com_ptr<IDXGISwapChain3> m_swapChain;
+    winrt::com_ptr<ID3D12Resource> m_renderTargets[FrameCount];
+    winrt::com_ptr<ID3D12Resource> m_depth;
+    winrt::com_ptr<ID3D12DescriptorHeap> m_rtvHeap, m_dsvHeap;
+    UINT m_rtvStride = 0;
+
+    winrt::com_ptr<ID3D12RootSignature> m_rootSignature;
+    winrt::com_ptr<ID3D12PipelineState> m_pipeline;
+    winrt::com_ptr<ID3D12Resource> m_vertices, m_indices;
+    D3D12_VERTEX_BUFFER_VIEW m_vertexView{};
+    D3D12_INDEX_BUFFER_VIEW m_indexView{};
+    D3D12_VIEWPORT m_viewport{};
+    D3D12_RECT m_scissor{};
 };
 
 } // namespace hello

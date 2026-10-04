@@ -56,16 +56,19 @@ building, so they become part of the flake source.
 
 ## Direct3D view
 
-The sample embeds a Direct3D 11 composition swap chain in a programmatically
+The sample embeds a Direct3D 12 composition swap chain in a programmatically
 created XAML `SwapChainPanel`. [D3DView.cpp](../example/D3DView.cpp) owns the
-hardware device, depth buffer, mesh, and swap chain. It renders a lit, rotating
+hardware device, command queue, depth buffer, mesh, and swap chain, with one
+command allocator per back buffer and a fence that keeps the CPU from reusing
+an allocator the GPU is still reading. It renders a lit, rotating
 cube on XAML frame callbacks on the UI thread, stops callbacks when unloaded,
 and resizes buffers for panel size and composition-scale changes. A lost device
 at presentation is recreated; other graphics failures appear in the status text.
 
 [Cube.hlsl](../example/Shaders/Cube.hlsl) contains the vertex and pixel shaders.
 Nix compiles them with the pinned SDK's `fxc` under Wine, generating headers
-with embedded Shader Model 5 bytecode. The console runs only the compiled
+with embedded Shader Model 5 bytecode, which Direct3D 12 accepts alongside a
+root signature built in C++ (the `Scene` constants are root constants). The console runs only the compiled
 shaders; it needs no runtime shader compiler. `nix build .#cube-shaders` builds
 the headers separately, and `XBOX_SHADER_INCLUDE_DIR` supplies their location
 for incremental builds. Editing HLSL and rerunning `./build` recompiles it.
