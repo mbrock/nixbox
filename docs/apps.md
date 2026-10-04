@@ -35,6 +35,31 @@ the template's flake provides both. Everything here works the same on an Apple
 silicon Mac except `idl`, which runs `midlrt` under Wine and so needs Linux. In this repository, `nix build .#game`
 builds the template and `nix run .#deploy-game` deploys it.
 
+## SDL3
+
+```sh
+nix flake init -t github:mbrock/nixbox#sdl
+```
+
+starts an SDL3 game instead: a plain `main()` with `SDL_Renderer` (Direct3D 11
+underneath) and gamepad input, built with Meson against `pkgsXbox.SDL3`
+(`dependency('sdl3')`). In this repository, `nix build .#sdlgame` and
+`nix run .#deploy-sdlgame`.
+
+`pkgsXbox.SDL3` is XboxEmulationHub's
+[SDL3-uwp](https://github.com/XboxEmulationHub/SDL3-uwp) fork, which keeps
+SDL's UWP backend, with [nix/sdl3-uwp.patch](../nix/sdl3-uwp.patch) on top.
+That backend is C++/CX, which only MSVC compiles; the patch ports it to
+standard C++/WinRT, keeps SDL's registry lookups out of the app container,
+and enables the Windows.Gaming.Input gamepad driver, the only one a UWP app
+has. Window, events, Direct3D 11 and 12 rendering, gamepads, keyboard,
+mouse, touch, audio (WASAPI), file paths, and message boxes are ported.
+XAML embedding, Game Bar hooks, and OpenGL ES are not.
+
+Verified on Xbox Series X: the template renders full screen and reads the
+gamepad. Audio, keyboard, mouse, and message boxes compile but have not been
+exercised on the console yet.
+
 ## Hacking in a dev shell
 
 `nix build` is the reproducible build; day to day, build incrementally in the

@@ -1,0 +1,3124 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 3a4da91a2..298ba982a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -520,7 +520,12 @@ endif()
+ 
+ if(WINDOWS_STORE)
+   sdl_compile_definitions(PRIVATE "SDL_BUILDING_WINRT=1" "WINAPI_FAMILY=WINAPI_FAMILY_APP" "_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS")
+-  sdl_compile_options(PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/ZW>" "$<$<COMPILE_LANGUAGE:CXX>:-EHsc>")
++  if(MSVC)
++    sdl_compile_options(PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/ZW>" "$<$<COMPILE_LANGUAGE:CXX>:-EHsc>")
++  else()
++    # Without /ZW the backend uses C++/WinRT, which needs C++20 (coroutines).
++    sdl_compile_options(PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-std=c++20>")
++  endif()
+ endif()
+ 
+ check_linker_supports_version_file(HAVE_WL_VERSION_SCRIPT)
+@@ -2446,7 +2451,9 @@ if(NOT WINDOWS_STORE)
+   sdl_link_dependency(base LIBS kernel32 user32 gdi32 winmm imm32 ole32 oleaut32 version uuid advapi32 setupapi shell32 hid)
+ endif()
+ 
+-if(WINDOWS_STORE)
++# The C++/CX runtime, for MSVC's /ZW build; the C++/WinRT build needs neither it
++# nor the DLL CRT, and links WindowsApp.lib like any UWP app.
++if(WINDOWS_STORE AND MSVC)
+   sdl_link_dependency(windows
+     LIBS
+       vccorlib$<$<CONFIG:Debug>:d>.lib
+diff --git a/src/audio/wasapi/SDL_wasapi_winrt.cpp b/src/audio/wasapi/SDL_wasapi_winrt.cpp
+index 3ef3cb272..82ec1a1ee 100644
+--- a/src/audio/wasapi/SDL_wasapi_winrt.cpp
++++ b/src/audio/wasapi/SDL_wasapi_winrt.cpp
+@@ -24,12 +24,17 @@
+ 
+ #if defined(SDL_AUDIO_DRIVER_WASAPI) && defined(SDL_PLATFORM_WINRT)
+ 
+-#include <Windows.h>
+-#include <windows.ui.core.h>
+-#include <windows.devices.enumeration.h>
+-#include <windows.media.devices.h>
++#include <windows.h>
+ #include <wrl/implements.h>
+-#include <collection.h>
++
++// WRL's roapi.h/roerrorapi.h declare a real ::Windows namespace, so this file
++// names the C++/WinRT projection as winrt::Windows rather than through the
++// Windows alias in SDL_winrt_cppwinrt.h.
++#include <unknwn.h>
++#include <winrt/Windows.Foundation.h>
++#include <winrt/Windows.Foundation.Collections.h>
++#include <winrt/Windows.Devices.Enumeration.h>
++#include <winrt/Windows.Media.Devices.h>
+ 
+ extern "C" {
+ #include "../../core/windows/SDL_windows.h"
+@@ -42,12 +47,14 @@ extern "C" {
+ 
+ #include "SDL_wasapi.h"
+ 
+-using namespace Windows::Devices::Enumeration;
+-using namespace Windows::Media::Devices;
+-using namespace Windows::Foundation;
++using namespace winrt::Windows::Devices::Enumeration;
++using namespace winrt::Windows::Media::Devices;
++// The projected IInspectable; the plain name is the COM interface.
++typedef winrt::Windows::Foundation::IInspectable RTObject;
++using winrt::Windows::Foundation::IPropertyValue;
+ using namespace Microsoft::WRL;
+ 
+-static Platform::String ^ SDL_PKEY_AudioEngine_DeviceFormat = L"{f19f064d-082c-4e27-bc73-6882a1bb8e4c} 0";
++static const wchar_t *SDL_PKEY_AudioEngine_DeviceFormat = L"{f19f064d-082c-4e27-bc73-6882a1bb8e4c} 0";
+ 
+ 
+ static bool FindWinRTAudioDeviceCallback(SDL_AudioDevice *device, void *userdata)
+@@ -65,60 +72,62 @@ class SDL_WasapiDeviceEventHandler
+   public:
+     SDL_WasapiDeviceEventHandler(const bool _recording);
+     ~SDL_WasapiDeviceEventHandler();
+-    void OnDeviceAdded(DeviceWatcher ^ sender, DeviceInformation ^ args);
+-    void OnDeviceRemoved(DeviceWatcher ^ sender, DeviceInformationUpdate ^ args);
+-    void OnDeviceUpdated(DeviceWatcher ^ sender, DeviceInformationUpdate ^ args);
+-    void OnEnumerationCompleted(DeviceWatcher ^ sender, Platform::Object ^ args);
+-    void OnDefaultRenderDeviceChanged(Platform::Object ^ sender, DefaultAudioRenderDeviceChangedEventArgs ^ args);
+-    void OnDefaultCaptureDeviceChanged(Platform::Object ^ sender, DefaultAudioCaptureDeviceChangedEventArgs ^ args);
++    void OnDeviceAdded(DeviceWatcher const &sender, DeviceInformation const &args);
++    void OnDeviceRemoved(DeviceWatcher const &sender, DeviceInformationUpdate const &args);
++    void OnDeviceUpdated(DeviceWatcher const &sender, DeviceInformationUpdate const &args);
++    void OnEnumerationCompleted(DeviceWatcher const &sender, RTObject const &args);
++    void OnDefaultRenderDeviceChanged(RTObject const &sender, DefaultAudioRenderDeviceChangedEventArgs const &args);
++    void OnDefaultCaptureDeviceChanged(RTObject const &sender, DefaultAudioCaptureDeviceChangedEventArgs const &args);
+     void WaitForCompletion();
+ 
+   private:
+     SDL_Semaphore *completed_semaphore;
+     const bool recording;
+-    DeviceWatcher ^ watcher;
+-    Windows::Foundation::EventRegistrationToken added_handler;
+-    Windows::Foundation::EventRegistrationToken removed_handler;
+-    Windows::Foundation::EventRegistrationToken updated_handler;
+-    Windows::Foundation::EventRegistrationToken completed_handler;
+-    Windows::Foundation::EventRegistrationToken default_changed_handler;
++    DeviceWatcher watcher{ nullptr };
++    winrt::event_token added_handler;
++    winrt::event_token removed_handler;
++    winrt::event_token updated_handler;
++    winrt::event_token completed_handler;
++    winrt::event_token default_changed_handler;
+ };
+ 
+ SDL_WasapiDeviceEventHandler::SDL_WasapiDeviceEventHandler(const bool _recording)
+-    : recording(_recording), completed_semaphore(SDL_CreateSemaphore(0))
++    : completed_semaphore(SDL_CreateSemaphore(0)), recording(_recording)
+ {
+     if (!completed_semaphore) {
+         return; // uhoh.
+     }
+ 
+-    Platform::String ^ selector = _recording ? MediaDevice::GetAudioCaptureSelector() : MediaDevice::GetAudioRenderSelector();
+-    Platform::Collections::Vector<Platform::String ^> properties;
+-    properties.Append(SDL_PKEY_AudioEngine_DeviceFormat);
+-    watcher = DeviceInformation::CreateWatcher(selector, properties.GetView());
++    try {
++        const winrt::hstring selector = _recording ? MediaDevice::GetAudioCaptureSelector() : MediaDevice::GetAudioRenderSelector();
++        auto properties = winrt::single_threaded_vector<winrt::hstring>({ winrt::hstring(SDL_PKEY_AudioEngine_DeviceFormat) });
++        watcher = DeviceInformation::CreateWatcher(selector, properties);
++    } catch (winrt::hresult_error const &) {
++        watcher = nullptr;
++    }
+     if (!watcher)
+         return; // uhoh.
+ 
+-    // !!! FIXME: this doesn't need a lambda here, I think, if I make SDL_WasapiDeviceEventHandler a proper C++/CX class. --ryan.
+-    added_handler = watcher->Added += ref new TypedEventHandler<DeviceWatcher ^, DeviceInformation ^>([this](DeviceWatcher ^ sender, DeviceInformation ^ args) { OnDeviceAdded(sender, args); });
+-    removed_handler = watcher->Removed += ref new TypedEventHandler<DeviceWatcher ^, DeviceInformationUpdate ^>([this](DeviceWatcher ^ sender, DeviceInformationUpdate ^ args) { OnDeviceRemoved(sender, args); });
+-    updated_handler = watcher->Updated += ref new TypedEventHandler<DeviceWatcher ^, DeviceInformationUpdate ^>([this](DeviceWatcher ^ sender, DeviceInformationUpdate ^ args) { OnDeviceUpdated(sender, args); });
+-    completed_handler = watcher->EnumerationCompleted += ref new TypedEventHandler<DeviceWatcher ^, Platform::Object ^>([this](DeviceWatcher ^ sender, Platform::Object ^ args) { OnEnumerationCompleted(sender, args); });
++    added_handler = watcher.Added([this](DeviceWatcher const &sender, DeviceInformation const &args) { OnDeviceAdded(sender, args); });
++    removed_handler = watcher.Removed([this](DeviceWatcher const &sender, DeviceInformationUpdate const &args) { OnDeviceRemoved(sender, args); });
++    updated_handler = watcher.Updated([this](DeviceWatcher const &sender, DeviceInformationUpdate const &args) { OnDeviceUpdated(sender, args); });
++    completed_handler = watcher.EnumerationCompleted([this](DeviceWatcher const &sender, RTObject const &args) { OnEnumerationCompleted(sender, args); });
+     if (recording) {
+-        default_changed_handler = MediaDevice::DefaultAudioCaptureDeviceChanged += ref new TypedEventHandler<Platform::Object ^, DefaultAudioCaptureDeviceChangedEventArgs ^>([this](Platform::Object ^ sender, DefaultAudioCaptureDeviceChangedEventArgs ^ args) { OnDefaultCaptureDeviceChanged(sender, args); });
++        default_changed_handler = MediaDevice::DefaultAudioCaptureDeviceChanged([this](RTObject const &sender, DefaultAudioCaptureDeviceChangedEventArgs const &args) { OnDefaultCaptureDeviceChanged(sender, args); });
+     } else {
+-        default_changed_handler = MediaDevice::DefaultAudioRenderDeviceChanged += ref new TypedEventHandler<Platform::Object ^, DefaultAudioRenderDeviceChangedEventArgs ^>([this](Platform::Object ^ sender, DefaultAudioRenderDeviceChangedEventArgs ^ args) { OnDefaultRenderDeviceChanged(sender, args); });
++        default_changed_handler = MediaDevice::DefaultAudioRenderDeviceChanged([this](RTObject const &sender, DefaultAudioRenderDeviceChangedEventArgs const &args) { OnDefaultRenderDeviceChanged(sender, args); });
+     }
+-    watcher->Start();
++    watcher.Start();
+ }
+ 
+ SDL_WasapiDeviceEventHandler::~SDL_WasapiDeviceEventHandler()
+ {
+     if (watcher) {
+-        watcher->Added -= added_handler;
+-        watcher->Removed -= removed_handler;
+-        watcher->Updated -= updated_handler;
+-        watcher->EnumerationCompleted -= completed_handler;
+-        watcher->Stop();
++        watcher.Added(added_handler);
++        watcher.Removed(removed_handler);
++        watcher.Updated(updated_handler);
++        watcher.EnumerationCompleted(completed_handler);
++        watcher.Stop();
+         watcher = nullptr;
+     }
+ 
+@@ -127,14 +136,16 @@ SDL_WasapiDeviceEventHandler::~SDL_WasapiDeviceEventHandler()
+         completed_semaphore = nullptr;
+     }
+ 
+-    if (recording) {
+-        MediaDevice::DefaultAudioCaptureDeviceChanged -= default_changed_handler;
+-    } else {
+-        MediaDevice::DefaultAudioRenderDeviceChanged -= default_changed_handler;
++    if (default_changed_handler) {
++        if (recording) {
++            MediaDevice::DefaultAudioCaptureDeviceChanged(default_changed_handler);
++        } else {
++            MediaDevice::DefaultAudioRenderDeviceChanged(default_changed_handler);
++        }
+     }
+ }
+ 
+-void SDL_WasapiDeviceEventHandler::OnDeviceAdded(DeviceWatcher ^ sender, DeviceInformation ^ info)
++void SDL_WasapiDeviceEventHandler::OnDeviceAdded(DeviceWatcher const &sender, DeviceInformation const &info)
+ {
+     /* You can have multiple endpoints on a device that are mutually exclusive ("Speakers" vs "Line Out" or whatever).
+        In a perfect world, things that are unplugged won't be in this collection. The only gotcha is probably for
+@@ -142,25 +153,24 @@ void SDL_WasapiDeviceEventHandler::OnDeviceAdded(DeviceWatcher ^ sender, DeviceI
+        available and switch automatically. (!!! FIXME...?) */
+ 
+     SDL_assert(sender == this->watcher);
+-    char *utf8dev = WIN_StringToUTF8W(info->Name->Data());
++    char *utf8dev = WIN_StringToUTF8W(info.Name().c_str());
+     if (utf8dev) {
+         SDL_AudioSpec spec;
+         SDL_zero(spec);
+ 
+-        Platform::Object ^ obj = info->Properties->Lookup(SDL_PKEY_AudioEngine_DeviceFormat);
++        RTObject obj = info.Properties().TryLookup(SDL_PKEY_AudioEngine_DeviceFormat);
+         if (obj) {
+-            IPropertyValue ^ property = (IPropertyValue ^) obj;
+-            Platform::Array<unsigned char> ^ data;
+-            property->GetUInt8Array(&data);
++            winrt::com_array<uint8_t> data;
++            obj.as<IPropertyValue>().GetUInt8Array(data);
+             WAVEFORMATEXTENSIBLE fmt;
+             SDL_zero(fmt);
+-            SDL_memcpy(&fmt, data->Data, SDL_min(data->Length, sizeof(WAVEFORMATEXTENSIBLE)));
++            SDL_memcpy(&fmt, data.data(), SDL_min(data.size(), sizeof(WAVEFORMATEXTENSIBLE)));
+             spec.channels = (Uint8)fmt.Format.nChannels;
+             spec.freq = fmt.Format.nSamplesPerSec;
+             spec.format = SDL_WaveFormatExToSDLFormat((WAVEFORMATEX *)&fmt);
+         }
+ 
+-        LPWSTR devid = SDL_wcsdup(info->Id->Data());
++        LPWSTR devid = SDL_wcsdup(info.Id().c_str());
+         if (devid) {
+             SDL_AddAudioDevice(this->recording, utf8dev, spec.channels ? &spec : NULL, devid);
+         }
+@@ -168,18 +178,18 @@ void SDL_WasapiDeviceEventHandler::OnDeviceAdded(DeviceWatcher ^ sender, DeviceI
+     }
+ }
+ 
+-void SDL_WasapiDeviceEventHandler::OnDeviceRemoved(DeviceWatcher ^ sender, DeviceInformationUpdate ^ info)
++void SDL_WasapiDeviceEventHandler::OnDeviceRemoved(DeviceWatcher const &sender, DeviceInformationUpdate const &info)
+ {
+     SDL_assert(sender == this->watcher);
+-    WASAPI_DisconnectDevice(FindWinRTAudioDevice(info->Id->Data()));
++    WASAPI_DisconnectDevice(FindWinRTAudioDevice(info.Id().c_str()));
+ }
+ 
+-void SDL_WasapiDeviceEventHandler::OnDeviceUpdated(DeviceWatcher ^ sender, DeviceInformationUpdate ^ args)
++void SDL_WasapiDeviceEventHandler::OnDeviceUpdated(DeviceWatcher const &sender, DeviceInformationUpdate const &args)
+ {
+     SDL_assert(sender == this->watcher);
+ }
+ 
+-void SDL_WasapiDeviceEventHandler::OnEnumerationCompleted(DeviceWatcher ^ sender, Platform::Object ^ args)
++void SDL_WasapiDeviceEventHandler::OnEnumerationCompleted(DeviceWatcher const &sender, RTObject const &args)
+ {
+     SDL_assert(sender == this->watcher);
+     if (this->completed_semaphore) {
+@@ -187,16 +197,16 @@ void SDL_WasapiDeviceEventHandler::OnEnumerationCompleted(DeviceWatcher ^ sender
+     }
+ }
+ 
+-void SDL_WasapiDeviceEventHandler::OnDefaultRenderDeviceChanged(Platform::Object ^ sender, DefaultAudioRenderDeviceChangedEventArgs ^ args)
++void SDL_WasapiDeviceEventHandler::OnDefaultRenderDeviceChanged(RTObject const &sender, DefaultAudioRenderDeviceChangedEventArgs const &args)
+ {
+     SDL_assert(!this->recording);
+-    SDL_DefaultAudioDeviceChanged(FindWinRTAudioDevice(args->Id->Data()));
++    SDL_DefaultAudioDeviceChanged(FindWinRTAudioDevice(args.Id().c_str()));
+ }
+ 
+-void SDL_WasapiDeviceEventHandler::OnDefaultCaptureDeviceChanged(Platform::Object ^ sender, DefaultAudioCaptureDeviceChangedEventArgs ^ args)
++void SDL_WasapiDeviceEventHandler::OnDefaultCaptureDeviceChanged(RTObject const &sender, DefaultAudioCaptureDeviceChangedEventArgs const &args)
+ {
+     SDL_assert(this->recording);
+-    SDL_DefaultAudioDeviceChanged(FindWinRTAudioDevice(args->Id->Data()));
++    SDL_DefaultAudioDeviceChanged(FindWinRTAudioDevice(args.Id().c_str()));
+ }
+ 
+ void SDL_WasapiDeviceEventHandler::WaitForCompletion()
+@@ -237,7 +247,7 @@ void WASAPI_PlatformDeinitializeStart(void)
+ 
+ void WASAPI_EnumerateEndpoints(SDL_AudioDevice **default_playback, SDL_AudioDevice **default_recording)
+ {
+-    Platform::String ^ defdevid;
++    winrt::hstring defdevid;
+ 
+     // DeviceWatchers will fire an Added event for each existing device at
+     //  startup, so we don't need to enumerate them separately before
+@@ -245,15 +255,15 @@ void WASAPI_EnumerateEndpoints(SDL_AudioDevice **default_playback, SDL_AudioDevi
+     playback_device_event_handler = new SDL_WasapiDeviceEventHandler(false);
+     playback_device_event_handler->WaitForCompletion();
+     defdevid = MediaDevice::GetDefaultAudioRenderId(AudioDeviceRole::Default);
+-    if (defdevid) {
+-        *default_playback = FindWinRTAudioDevice(defdevid->Data());
++    if (!defdevid.empty()) {
++        *default_playback = FindWinRTAudioDevice(defdevid.c_str());
+     }
+ 
+     recording_device_event_handler = new SDL_WasapiDeviceEventHandler(true);
+     recording_device_event_handler->WaitForCompletion();
+     defdevid = MediaDevice::GetDefaultAudioCaptureId(AudioDeviceRole::Default);
+-    if (defdevid) {
+-        *default_recording = FindWinRTAudioDevice(defdevid->Data());
++    if (!defdevid.empty()) {
++        *default_recording = FindWinRTAudioDevice(defdevid.c_str());
+     }
+ }
+ 
+diff --git a/src/core/windows/SDL_windows.c b/src/core/windows/SDL_windows.c
+index 5ee5acf47..4386b7926 100644
+--- a/src/core/windows/SDL_windows.c
++++ b/src/core/windows/SDL_windows.c
+@@ -428,7 +428,7 @@ WASAPI doesn't need this. This is just for DirectSound/WinMM.
+ */
+ char *WIN_LookupAudioDeviceName(const WCHAR *name, const GUID *guid)
+ {
+-#if defined(SDL_PLATFORM_XBOXONE) || defined(SDL_PLATFORM_XBOXSERIES)
++#if defined(SDL_PLATFORM_XBOXONE) || defined(SDL_PLATFORM_XBOXSERIES) || defined(SDL_PLATFORM_WINRT)
+     return WIN_StringToUTF8W(name); // No registry access on Xbox, go with what we've got.
+ #else
+     static const GUID nullguid = { 0 };
+diff --git a/src/core/winrt/SDL_winrt_cppwinrt.h b/src/core/winrt/SDL_winrt_cppwinrt.h
+new file mode 100644
+index 000000000..de4bdd386
+--- /dev/null
++++ b/src/core/winrt/SDL_winrt_cppwinrt.h
+@@ -0,0 +1,57 @@
++/*
++  Simple DirectMedia Layer
++  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
++
++  This software is provided 'as-is', without any express or implied
++  warranty.  In no event will the authors be held liable for any damages
++  arising from the use of this software.
++
++  Permission is granted to anyone to use this software for any purpose,
++  including commercial applications, and to alter it and redistribute it
++  freely, subject to the following restrictions:
++
++  1. The origin of this software must not be misrepresented; you must not
++     claim that you wrote the original software. If you use this software
++     in a product, an acknowledgment in the product documentation would be
++     appreciated but is not required.
++  2. Altered source versions must be plainly marked as such, and must not be
++     misrepresented as being the original software.
++  3. This notice may not be removed or altered from any source distribution.
++*/
++
++/* The WinRT backend was written in C++/CX, which only MSVC compiles (/ZW).
++   It now uses standard C++/WinRT. This header supplies what /ZW provided
++   implicitly: the Windows Runtime projection, reachable as Windows::... */
++
++#ifndef SDL_winrt_cppwinrt_h_
++#define SDL_winrt_cppwinrt_h_
++
++#ifdef __cplusplus
++
++#include <unknwn.h>
++// winbase.h's macro would break Windows.UI.Xaml's Timeline::GetCurrentTime.
++#undef GetCurrentTime
++
++#include <winrt/base.h>
++#include <winrt/Windows.ApplicationModel.h>
++#include <winrt/Windows.ApplicationModel.Activation.h>
++#include <winrt/Windows.ApplicationModel.Core.h>
++#include <winrt/Windows.Devices.Input.h>
++#include <winrt/Windows.Foundation.h>
++#include <winrt/Windows.Foundation.Collections.h>
++#include <winrt/Windows.Gaming.Input.h>
++#include <winrt/Windows.Graphics.Display.h>
++#include <winrt/Windows.Graphics.Display.Core.h>
++#include <winrt/Windows.Storage.h>
++#include <winrt/Windows.System.h>
++#include <winrt/Windows.System.Profile.h>
++#include <winrt/Windows.UI.Core.h>
++#include <winrt/Windows.UI.Input.h>
++#include <winrt/Windows.UI.Popups.h>
++#include <winrt/Windows.UI.ViewManagement.h>
++
++namespace Windows = ::winrt::Windows;
++
++#endif // __cplusplus
++
++#endif // SDL_winrt_cppwinrt_h_
+diff --git a/src/core/winrt/SDL_winrtapp_common.cpp b/src/core/winrt/SDL_winrtapp_common.cpp
+index be3558dea..9aa01dd4c 100644
+--- a/src/core/winrt/SDL_winrtapp_common.cpp
++++ b/src/core/winrt/SDL_winrtapp_common.cpp
+@@ -20,7 +20,7 @@
+ */
+ #include "SDL_internal.h"
+ 
+-#include <wrl.h>
++#include "SDL_winrt_cppwinrt.h"
+ 
+ int (*WINRT_SDLAppEntryPoint)(int, char **) = NULL;
+ 
+@@ -28,13 +28,13 @@ extern "C"
+ SDL_WinRT_DeviceFamily SDL_GetWinRTDeviceFamily()
+ {
+ #if NTDDI_VERSION >= NTDDI_WIN10 // !!! FIXME: I have no idea if this is the right test. This is a UWP API, I think. Older windows should...just return "mobile"? I don't know. --ryan.
+-    Platform::String ^ deviceFamily = Windows::System::Profile::AnalyticsInfo::VersionInfo->DeviceFamily;
++    winrt::hstring deviceFamily = Windows::System::Profile::AnalyticsInfo::VersionInfo().DeviceFamily();
+ 
+-    if (deviceFamily->Equals("Windows.Desktop")) {
++    if (deviceFamily == L"Windows.Desktop") {
+         return SDL_WINRT_DEVICEFAMILY_DESKTOP;
+-    } else if (deviceFamily->Equals("Windows.Mobile")) {
++    } else if (deviceFamily == L"Windows.Mobile") {
+         return SDL_WINRT_DEVICEFAMILY_MOBILE;
+-    } else if (deviceFamily->Equals("Windows.Xbox")) {
++    } else if (deviceFamily == L"Windows.Xbox") {
+         return SDL_WINRT_DEVICEFAMILY_XBOX;
+     }
+ #endif
+diff --git a/src/core/winrt/SDL_winrtapp_direct3d.cpp b/src/core/winrt/SDL_winrtapp_direct3d.cpp
+index 5b8817c35..e89f6db7e 100644
+--- a/src/core/winrt/SDL_winrtapp_direct3d.cpp
++++ b/src/core/winrt/SDL_winrtapp_direct3d.cpp
+@@ -21,21 +21,8 @@
+ #include "SDL_internal.h"
+ 
+ // Windows includes
+-#include "ppltasks.h"
+-using namespace concurrency;
+-using namespace Windows::ApplicationModel;
+-using namespace Windows::ApplicationModel::Core;
+-using namespace Windows::ApplicationModel::Activation;
+-using namespace Windows::Devices::Input;
+-using namespace Windows::Graphics::Display;
+-using namespace Windows::Foundation;
+-using namespace Windows::System;
+-using namespace Windows::UI::Core;
+-using namespace Windows::UI::Input;
+-
+-#if SDL_WINAPI_FAMILY_PHONE
+-using namespace Windows::Phone::UI::Input;
+-#endif
++#include "SDL_winrt_cppwinrt.h"
++#include <winrt/Windows.System.Threading.h>
+ 
+ // SDL includes
+ extern "C" {
+@@ -53,6 +40,17 @@ extern "C" {
+ #include "SDL_winrtapp_common.h"
+ #include "SDL_winrtapp_direct3d.h"
+ 
++// After the SDL headers, whose ::IUnknown would otherwise be ambiguous.
++using namespace Windows::ApplicationModel;
++using namespace Windows::ApplicationModel::Core;
++using namespace Windows::ApplicationModel::Activation;
++using namespace Windows::Devices::Input;
++using namespace Windows::Graphics::Display;
++using namespace Windows::Foundation;
++using namespace Windows::System;
++using namespace Windows::UI::Core;
++using namespace Windows::UI::Input;
++
+ #ifdef SDL_VIDEO_RENDER_D3D11
+ /* Calling IDXGIDevice3::Trim on the active Direct3D 11.x device is necessary
+  * when Windows 8.1 apps are about to get suspended.
+@@ -73,69 +71,46 @@ extern "C" void D3D11_Trim(SDL_Renderer *);
+ // non-global, such as something created inside
+ // SDL_InitSubSystem(SDL_INIT_VIDEO), or something inside
+ // SDL_CreateWindow().
+-SDL_WinRTApp ^ SDL_WinRTGlobalApp = nullptr;
++SDL_WinRTApp *SDL_WinRTGlobalApp = nullptr;
+ 
+-ref class SDLApplicationSource sealed : Windows::ApplicationModel::Core::IFrameworkViewSource
++struct SDLApplicationSource : winrt::implements<SDLApplicationSource, IFrameworkViewSource>
+ {
+-  public:
+-    virtual Windows::ApplicationModel::Core::IFrameworkView ^ CreateView();
++    IFrameworkView CreateView();
+ };
+ 
+-IFrameworkView ^ SDLApplicationSource::CreateView()
++IFrameworkView SDLApplicationSource::CreateView()
+ {
+     // TODO, WinRT: see if this function (CreateView) can ever get called
+     // more than once.  For now, just prevent it from ever assigning
+     // SDL_WinRTGlobalApp more than once.
+     SDL_assert(!SDL_WinRTGlobalApp);
+-    SDL_WinRTApp ^ app = ref new SDL_WinRTApp();
++    winrt::com_ptr<SDL_WinRTApp> app = winrt::make_self<SDL_WinRTApp>();
+     if (!SDL_WinRTGlobalApp) {
+-        SDL_WinRTGlobalApp = app;
++        SDL_WinRTGlobalApp = app.get();
+     }
+-    return app;
++    return *app;
+ }
+ 
+ bool SDL_WinRTInitNonXAMLApp(int (*mainFunction)(int, char **))
+ {
+     WINRT_SDLAppEntryPoint = mainFunction;
+-    auto direct3DApplicationSource = ref new SDLApplicationSource();
+-    CoreApplication::Run(direct3DApplicationSource);
++    CoreApplication::Run(winrt::make<SDLApplicationSource>());
+     return true;
+ }
+ 
+ static void WINRT_ProcessWindowSizeChange() // TODO: Pass an SDL_Window-identifying thing into WINRT_ProcessWindowSizeChange()
+ {
+-    CoreWindow ^ coreWindow = CoreWindow::GetForCurrentThread();
++    CoreWindow coreWindow = CoreWindow::GetForCurrentThread();
+     if (coreWindow) {
+         if (WINRT_GlobalSDLWindow) {
+             SDL_Window *window = WINRT_GlobalSDLWindow;
+             SDL_WindowData *data = window->internal;
+ 
+-            int x = (int)SDL_lroundf(data->coreWindow->Bounds.Left);
+-            int y = (int)SDL_lroundf(data->coreWindow->Bounds.Top);
+-            int w = (int)SDL_floorf(data->coreWindow->Bounds.Width);
+-            int h = (int)SDL_floorf(data->coreWindow->Bounds.Height);
+-
+-#if SDL_WINAPI_FAMILY_PHONE && NTDDI_VERSION == NTDDI_WIN8
+-            /* WinPhone 8.0 always keeps its native window size in portrait,
+-               regardless of orientation.  This changes in WinPhone 8.1,
+-               in which the native window's size changes along with
+-               orientation.
+-
+-               Attempt to emulate WinPhone 8.1's behavior on WinPhone 8.0, with
+-               regards to window size.  This fixes a rendering bug that occurs
+-               when a WinPhone 8.0 app is rotated to either 90 or 270 degrees.
+-            */
+-            const DisplayOrientations currentOrientation = WINRT_DISPLAY_PROPERTY(CurrentOrientation);
+-            switch (currentOrientation) {
+-            case DisplayOrientations::Landscape:
+-            case DisplayOrientations::LandscapeFlipped:
+-            {
+-                int tmp = w;
+-                w = h;
+-                h = tmp;
+-            } break;
+-            }
+-#endif
++            const Rect bounds = data->coreWindow.Bounds();
++            int x = (int)SDL_lroundf(bounds.X);
++            int y = (int)SDL_lroundf(bounds.Y);
++            int w = (int)SDL_floorf(bounds.Width);
++            int h = (int)SDL_floorf(bounds.Height);
+ 
+             if (WINRT_TVOutputSizeOverridesActive()) {
+                 WINRT_TVOutputOverrideApplyToWindow(window);
+@@ -162,55 +137,43 @@ static void WINRT_ProcessWindowSizeChange() // TODO: Pass an SDL_Window-identify
+ 
+ SDL_WinRTApp::SDL_WinRTApp() : m_windowClosed(false),
+                                m_windowVisible(true),
+-                               m_launchOnExit("")
++                               m_launchOnExit()
+ {
+ }
+ 
+-void SDL_WinRTApp::Initialize(CoreApplicationView ^ applicationView)
++void SDL_WinRTApp::Initialize(CoreApplicationView const &applicationView)
+ {
+-    applicationView->Activated +=
+-        ref new TypedEventHandler<CoreApplicationView ^, IActivatedEventArgs ^>(this, &SDL_WinRTApp::OnAppActivated);
++    applicationView.Activated({ this, &SDL_WinRTApp::OnAppActivated });
+ 
+-    CoreApplication::Suspending +=
+-        ref new EventHandler<SuspendingEventArgs ^>(this, &SDL_WinRTApp::OnSuspending);
++    CoreApplication::Suspending({ this, &SDL_WinRTApp::OnSuspending });
+ 
+-    CoreApplication::Resuming +=
+-        ref new EventHandler<Platform::Object ^>(this, &SDL_WinRTApp::OnResuming);
++    CoreApplication::Resuming({ this, &SDL_WinRTApp::OnResuming });
+ 
+-    CoreApplication::Exiting +=
+-        ref new EventHandler<Platform::Object ^>(this, &SDL_WinRTApp::OnExiting);
++    CoreApplication::Exiting({ this, &SDL_WinRTApp::OnExiting });
+ 
+-#if NTDDI_VERSION >= NTDDI_WIN10
+     /* HACK ALERT!  Xbox One doesn't seem to detect gamepads unless something
+        gets registered to receive Win10's Windows.Gaming.Input.Gamepad.GamepadAdded
+        events.  We'll register an event handler for these events here, to make
+        sure that gamepad detection works later on, if requested.
+     */
+-    Windows::Gaming::Input::Gamepad::GamepadAdded +=
+-        ref new Windows::Foundation::EventHandler<Windows::Gaming::Input::Gamepad ^>(
+-            this, &SDL_WinRTApp::OnGamepadAdded);
+-#endif
++    Windows::Gaming::Input::Gamepad::GamepadAdded({ this, &SDL_WinRTApp::OnGamepadAdded });
+ }
+ 
+-#if NTDDI_VERSION > NTDDI_WIN8
+-void SDL_WinRTApp::OnOrientationChanged(DisplayInformation ^ sender, Object ^ args)
+-#else
+-void SDL_WinRTApp::OnOrientationChanged(Object ^ sender)
+-#endif
++void SDL_WinRTApp::OnOrientationChanged(DisplayInformation const &sender, IInspectable const &args)
+ {
+-#if LOG_ORIENTATION_EVENTS == 1
++#ifdef LOG_ORIENTATION_EVENTS
+     {
+-        CoreWindow ^ window = CoreWindow::GetForCurrentThread();
++        CoreWindow window = CoreWindow::GetForCurrentThread();
+         if (window) {
+             SDL_Log("%s, current orientation=%d, native orientation=%d, auto rot. pref=%d, CoreWindow Bounds={%f,%f,%f,%f}\n",
+                     __FUNCTION__,
+                     WINRT_DISPLAY_PROPERTY(CurrentOrientation),
+                     WINRT_DISPLAY_PROPERTY(NativeOrientation),
+                     WINRT_DISPLAY_PROPERTY(AutoRotationPreferences),
+-                    window->Bounds.X,
+-                    window->Bounds.Y,
+-                    window->Bounds.Width,
+-                    window->Bounds.Height);
++                    window.Bounds().X,
++                    window.Bounds().Y,
++                    window.Bounds().Width,
++                    window.Bounds().Height);
+         } else {
+             SDL_Log("%s, current orientation=%d, native orientation=%d, auto rot. pref=%d\n",
+                     __FUNCTION__,
+@@ -222,122 +185,65 @@ void SDL_WinRTApp::OnOrientationChanged(Object ^ sender)
+ #endif
+ 
+     WINRT_ProcessWindowSizeChange();
+-
+-#if SDL_WINAPI_FAMILY_PHONE
+-    // HACK: Make sure that orientation changes
+-    // lead to the Direct3D renderer's viewport getting updated:
+-    //
+-    // For some reason, this doesn't seem to need to be done on Windows 8.x,
+-    // even when going from Landscape to LandscapeFlipped.  It only seems to
+-    // be needed on Windows Phone, at least when I tested on my devices.
+-    // I'm not currently sure why this is, but it seems to work fine. -- David L.
+-    //
+-    // TODO, WinRT: do more extensive research into why orientation changes on Win 8.x don't need D3D changes, or if they might, in some cases
+-    SDL_Window *window = WINRT_GlobalSDLWindow;
+-    if (window) {
+-        SDL_WindowData *data = window->internal;
+-        int w = (int)SDL_floorf(data->coreWindow->Bounds.Width);
+-        int h = (int)SDL_floorf(data->coreWindow->Bounds.Height);
+-        SDL_SendWindowEvent(WINRT_GlobalSDLWindow, SDL_EVENT_WINDOW_RESIZED, w, h);
+-    }
+-#endif
+ }
+ 
+-void SDL_WinRTApp::SetWindow(CoreWindow ^ window)
++void SDL_WinRTApp::SetWindow(CoreWindow const &window)
+ {
+-#if LOG_WINDOW_EVENTS == 1
++#ifdef LOG_WINDOW_EVENTS
+     SDL_Log("%s, current orientation=%d, native orientation=%d, auto rot. pref=%d, window bounds={%f, %f, %f,%f}\n",
+             __FUNCTION__,
+             WINRT_DISPLAY_PROPERTY(CurrentOrientation),
+             WINRT_DISPLAY_PROPERTY(NativeOrientation),
+             WINRT_DISPLAY_PROPERTY(AutoRotationPreferences),
+-            window->Bounds.X,
+-            window->Bounds.Y,
+-            window->Bounds.Width,
+-            window->Bounds.Height);
++            window.Bounds().X,
++            window.Bounds().Y,
++            window.Bounds().Width,
++            window.Bounds().Height);
+ #endif
+ 
+-    window->SizeChanged +=
+-        ref new TypedEventHandler<CoreWindow ^, WindowSizeChangedEventArgs ^>(this, &SDL_WinRTApp::OnWindowSizeChanged);
++    window.SizeChanged({ this, &SDL_WinRTApp::OnWindowSizeChanged });
+ 
+-    window->VisibilityChanged +=
+-        ref new TypedEventHandler<CoreWindow ^, VisibilityChangedEventArgs ^>(this, &SDL_WinRTApp::OnVisibilityChanged);
++    window.VisibilityChanged({ this, &SDL_WinRTApp::OnVisibilityChanged });
+ 
+-    window->Activated +=
+-        ref new TypedEventHandler<CoreWindow ^, WindowActivatedEventArgs ^>(this, &SDL_WinRTApp::OnWindowActivated);
++    window.Activated({ this, &SDL_WinRTApp::OnWindowActivated });
+ 
+-    window->Closed +=
+-        ref new TypedEventHandler<CoreWindow ^, CoreWindowEventArgs ^>(this, &SDL_WinRTApp::OnWindowClosed);
++    window.Closed({ this, &SDL_WinRTApp::OnWindowClosed });
+ 
+-#if !SDL_WINAPI_FAMILY_PHONE
+-    window->PointerCursor = ref new CoreCursor(CoreCursorType::Arrow, 0);
+-#endif
++    window.PointerCursor(CoreCursor(CoreCursorType::Arrow, 0));
+ 
+-    window->PointerPressed +=
+-        ref new TypedEventHandler<CoreWindow ^, PointerEventArgs ^>(this, &SDL_WinRTApp::OnPointerPressed);
++    window.PointerPressed({ this, &SDL_WinRTApp::OnPointerPressed });
+ 
+-    window->PointerMoved +=
+-        ref new TypedEventHandler<CoreWindow ^, PointerEventArgs ^>(this, &SDL_WinRTApp::OnPointerMoved);
++    window.PointerMoved({ this, &SDL_WinRTApp::OnPointerMoved });
+ 
+-    window->PointerReleased +=
+-        ref new TypedEventHandler<CoreWindow ^, PointerEventArgs ^>(this, &SDL_WinRTApp::OnPointerReleased);
++    window.PointerReleased({ this, &SDL_WinRTApp::OnPointerReleased });
+ 
+-    window->PointerEntered +=
+-        ref new TypedEventHandler<CoreWindow ^, PointerEventArgs ^>(this, &SDL_WinRTApp::OnPointerEntered);
++    window.PointerEntered({ this, &SDL_WinRTApp::OnPointerEntered });
+ 
+-    window->PointerExited +=
+-        ref new TypedEventHandler<CoreWindow ^, PointerEventArgs ^>(this, &SDL_WinRTApp::OnPointerExited);
++    window.PointerExited({ this, &SDL_WinRTApp::OnPointerExited });
+ 
+-    window->PointerWheelChanged +=
+-        ref new TypedEventHandler<CoreWindow ^, PointerEventArgs ^>(this, &SDL_WinRTApp::OnPointerWheelChanged);
++    window.PointerWheelChanged({ this, &SDL_WinRTApp::OnPointerWheelChanged });
+ 
+-#if !SDL_WINAPI_FAMILY_PHONE
+     // Retrieves relative-only mouse movements:
+-    Windows::Devices::Input::MouseDevice::GetForCurrentView()->MouseMoved +=
+-        ref new TypedEventHandler<MouseDevice ^, MouseEventArgs ^>(this, &SDL_WinRTApp::OnMouseMoved);
+-#endif
++    Windows::Devices::Input::MouseDevice::GetForCurrentView().MouseMoved({ this, &SDL_WinRTApp::OnMouseMoved });
+ 
+-    window->Dispatcher->AcceleratorKeyActivated +=
+-        ref new TypedEventHandler<CoreDispatcher ^, AcceleratorKeyEventArgs ^>(this, &SDL_WinRTApp::OnAcceleratorKeyActivated);
++    window.Dispatcher().AcceleratorKeyActivated({ this, &SDL_WinRTApp::OnAcceleratorKeyActivated });
+ 
+-    window->CharacterReceived +=
+-        ref new TypedEventHandler<CoreWindow ^, CharacterReceivedEventArgs ^>(this, &SDL_WinRTApp::OnCharacterReceived);
++    window.CharacterReceived({ this, &SDL_WinRTApp::OnCharacterReceived });
+ 
+-#if NTDDI_VERSION >= NTDDI_WIN10
+-    Windows::UI::Core::SystemNavigationManager::GetForCurrentView()->BackRequested +=
+-        ref new EventHandler<BackRequestedEventArgs ^>(this, &SDL_WinRTApp::OnBackButtonPressed);
+-#elif SDL_WINAPI_FAMILY_PHONE
+-    HardwareButtons::BackPressed +=
+-        ref new EventHandler<BackPressedEventArgs ^>(this, &SDL_WinRTApp::OnBackButtonPressed);
+-#endif
+-
+-#if NTDDI_VERSION > NTDDI_WIN8
+-    DisplayInformation::GetForCurrentView()->OrientationChanged +=
+-        ref new TypedEventHandler<Windows::Graphics::Display::DisplayInformation ^, Object ^>(this, &SDL_WinRTApp::OnOrientationChanged);
+-#else
+-    DisplayProperties::OrientationChanged +=
+-        ref new DisplayPropertiesEventHandler(this, &SDL_WinRTApp::OnOrientationChanged);
+-#endif
++    Windows::UI::Core::SystemNavigationManager::GetForCurrentView().BackRequested({ this, &SDL_WinRTApp::OnBackButtonPressed });
+ 
+-#if (WINAPI_FAMILY == WINAPI_FAMILY_APP) && (NTDDI_VERSION < NTDDI_WIN10) // for Windows 8/8.1/RT apps... (and not Phone apps)
+-    // Make sure we know when a user has opened the app's settings pane.
+-    // This is needed in order to display a privacy policy, which needs
+-    // to be done for network-enabled apps, as per Windows Store requirements.
+-    using namespace Windows::UI::ApplicationSettings;
+-    SettingsPane::GetForCurrentView()->CommandsRequested +=
+-        ref new TypedEventHandler<SettingsPane ^, SettingsPaneCommandsRequestedEventArgs ^>(this, &SDL_WinRTApp::OnSettingsPaneCommandsRequested);
+-#endif
++    DisplayInformation::GetForCurrentView().OrientationChanged({ this, &SDL_WinRTApp::OnOrientationChanged });
+ }
+ 
+-void SDL_WinRTApp::Load(Platform::String ^ entryPoint)
++void SDL_WinRTApp::Load(winrt::hstring const &entryPoint)
+ {
+ }
+ 
+ void SDL_WinRTApp::App_BackRequested(
+-    Platform::Object ^ sender,
+-    Windows::UI::Core::BackRequestedEventArgs ^ e)
++    IInspectable const &sender,
++    Windows::UI::Core::BackRequestedEventArgs const &e)
+ {
+-    e->Handled = true;
++    e.Handled(true);
+ }
+ 
+ void SDL_WinRTApp::Run()
+@@ -345,9 +251,7 @@ void SDL_WinRTApp::Run()
+     auto navigation = Windows::UI::Core::SystemNavigationManager::GetForCurrentView();
+     // UWP on Xbox One triggers a back request whenever the B button is
+     // pressed which can result in the app being suspended if unhandled
+-    navigation->BackRequested += ref new Windows::Foundation::EventHandler<
+-        Windows::UI::Core::BackRequestedEventArgs ^>(
+-        this, &SDL_WinRTApp::App_BackRequested);
++    navigation.BackRequested({ this, &SDL_WinRTApp::App_BackRequested });
+ 
+     SDL_SetMainReady();
+ 
+@@ -367,16 +271,13 @@ void SDL_WinRTApp::Run()
+     }
+ 
+     //Retropass handler
+-    if (!m_launchOnExit->IsEmpty()) {
+-        Windows::Foundation::Uri ^ m_uri = ref new Windows::Foundation::Uri(m_launchOnExit);
+-        auto asyncOperation =
+-            Windows::System::Launcher::LaunchUriAsync(m_uri);
+-        asyncOperation->Completed = ref new Windows::Foundation::AsyncOperationCompletedHandler<bool>(
+-            [](Windows::Foundation::IAsyncOperation<bool> const ^
+-                   sender,
++    if (!m_launchOnExit.empty()) {
++        Windows::Foundation::Uri uri(m_launchOnExit);
++        auto asyncOperation = Windows::System::Launcher::LaunchUriAsync(uri);
++        asyncOperation.Completed(
++            [](Windows::Foundation::IAsyncOperation<bool> const &sender,
+                Windows::Foundation::AsyncStatus const asyncStatus) {
+                 CoreApplication::Exit();
+-                return;
+             });
+     }
+ }
+@@ -423,7 +324,7 @@ void SDL_WinRTApp::PumpEvents()
+              * 'ProcessAllIfPresent' will make ProcessEvents() process anywhere
+              * from zero to N events, and will then return.
+              */
+-            CoreWindow::GetForCurrentThread()->Dispatcher->ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
++            CoreWindow::GetForCurrentThread().Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
+         } else {
+             /* This style of event-pumping, with 'ProcessOneAndAllPending',
+              * will cause anywhere from one to N events to be processed.  If
+@@ -432,7 +333,7 @@ void SDL_WinRTApp::PumpEvents()
+              * available, and will not return (to the caller) until this
+              * happens!  This should only occur when the app is hidden.
+              */
+-            CoreWindow::GetForCurrentThread()->Dispatcher->ProcessEvents(CoreProcessEventsOption::ProcessOneAndAllPending);
++            CoreWindow::GetForCurrentThread().Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessOneAndAllPending);
+         }
+     }
+ }
+@@ -441,57 +342,13 @@ void SDL_WinRTApp::Uninitialize()
+ {
+ }
+ 
+-#if (WINAPI_FAMILY == WINAPI_FAMILY_APP) && (NTDDI_VERSION < NTDDI_WIN10)
+-void SDL_WinRTApp::OnSettingsPaneCommandsRequested(
+-    Windows::UI::ApplicationSettings::SettingsPane ^ p,
+-    Windows::UI::ApplicationSettings::SettingsPaneCommandsRequestedEventArgs ^ args)
+-{
+-    using namespace Platform;
+-    using namespace Windows::UI::ApplicationSettings;
+-    using namespace Windows::UI::Popups;
+-
+-    String ^ privacyPolicyURL = nullptr;   // a URL to an app's Privacy Policy
+-    String ^ privacyPolicyLabel = nullptr; // label/link text
+-    const char *tmpHintValue = NULL;       // SDL_GetHint-retrieved value, used immediately
+-    wchar_t *tmpStr = NULL;                // used for UTF8 to UCS2 conversion
+-
+-    // Setup a 'Privacy Policy' link, if one is available (via SDL_GetHint):
+-    tmpHintValue = SDL_GetHint(SDL_HINT_WINRT_PRIVACY_POLICY_URL);
+-    if (tmpHintValue && tmpHintValue[0] != '\0') {
+-        // Convert the privacy policy's URL to UCS2:
+-        tmpStr = WIN_UTF8ToString(tmpHintValue);
+-        privacyPolicyURL = ref new String(tmpStr);
+-        SDL_free(tmpStr);
+-
+-        // Optionally retrieve custom label-text for the link.  If this isn't
+-        // available, a default value will be used instead.
+-        tmpHintValue = SDL_GetHint(SDL_HINT_WINRT_PRIVACY_POLICY_LABEL);
+-        if (tmpHintValue && tmpHintValue[0] != '\0') {
+-            tmpStr = WIN_UTF8ToString(tmpHintValue);
+-            privacyPolicyLabel = ref new String(tmpStr);
+-            SDL_free(tmpStr);
+-        } else {
+-            privacyPolicyLabel = ref new String(L"Privacy Policy");
+-        }
+-
+-        // Register the link, along with a handler to be called if and when it is
+-        // clicked:
+-        auto cmd = ref new SettingsCommand(L"privacyPolicy", privacyPolicyLabel,
+-                                           ref new UICommandInvokedHandler([=](IUICommand ^) {
+-                                               Windows::System::Launcher::LaunchUriAsync(ref new Uri(privacyPolicyURL));
+-                                           }));
+-        args->Request->ApplicationCommands->Append(cmd);
+-    }
+-}
+-#endif // if (WINAPI_FAMILY == WINAPI_FAMILY_APP) && (NTDDI_VERSION < NTDDI_WIN10)
+-
+-void SDL_WinRTApp::OnWindowSizeChanged(CoreWindow ^ sender, WindowSizeChangedEventArgs ^ args)
++void SDL_WinRTApp::OnWindowSizeChanged(CoreWindow const &sender, WindowSizeChangedEventArgs const &args)
+ {
+-#if LOG_WINDOW_EVENTS == 1
++#ifdef LOG_WINDOW_EVENTS
+     SDL_Log("%s, size={%f,%f}, bounds={%f,%f,%f,%f}, current orientation=%d, native orientation=%d, auto rot. pref=%d, WINRT_GlobalSDLWindow?=%s\n",
+             __FUNCTION__,
+-            args->Size.Width, args->Size.Height,
+-            sender->Bounds.X, sender->Bounds.Y, sender->Bounds.Width, sender->Bounds.Height,
++            args.Size().Width, args.Size().Height,
++            sender.Bounds().X, sender.Bounds().Y, sender.Bounds().Width, sender.Bounds().Height,
+             WINRT_DISPLAY_PROPERTY(CurrentOrientation),
+             WINRT_DISPLAY_PROPERTY(NativeOrientation),
+             WINRT_DISPLAY_PROPERTY(AutoRotationPreferences),
+@@ -501,22 +358,22 @@ void SDL_WinRTApp::OnWindowSizeChanged(CoreWindow ^ sender, WindowSizeChangedEve
+     WINRT_ProcessWindowSizeChange();
+ }
+ 
+-void SDL_WinRTApp::OnVisibilityChanged(CoreWindow ^ sender, VisibilityChangedEventArgs ^ args)
++void SDL_WinRTApp::OnVisibilityChanged(CoreWindow const &sender, VisibilityChangedEventArgs const &args)
+ {
+-#if LOG_WINDOW_EVENTS == 1
++#ifdef LOG_WINDOW_EVENTS
+     SDL_Log("%s, visible?=%s, bounds={%f,%f,%f,%f}, WINRT_GlobalSDLWindow?=%s\n",
+             __FUNCTION__,
+-            (args->Visible ? "yes" : "no"),
+-            sender->Bounds.X, sender->Bounds.Y,
+-            sender->Bounds.Width, sender->Bounds.Height,
++            (args.Visible() ? "yes" : "no"),
++            sender.Bounds().X, sender.Bounds().Y,
++            sender.Bounds().Width, sender.Bounds().Height,
+             (WINRT_GlobalSDLWindow ? "yes" : "no"));
+ #endif
+ 
+-    m_windowVisible = args->Visible;
++    m_windowVisible = args.Visible();
+     if (WINRT_GlobalSDLWindow) {
+         bool wasSDLWindowSurfaceValid = WINRT_GlobalSDLWindow->surface_valid;
+         SDL_WindowFlags latestWindowFlags = WINRT_DetectWindowFlags(WINRT_GlobalSDLWindow);
+-        if (args->Visible) {
++        if (args.Visible()) {
+             SDL_SendWindowEvent(WINRT_GlobalSDLWindow, SDL_EVENT_WINDOW_SHOWN, 0, 0);
+             SDL_SendWindowEvent(WINRT_GlobalSDLWindow, SDL_EVENT_WINDOW_FOCUS_GAINED, 0, 0);
+             if (latestWindowFlags & SDL_WINDOW_MAXIMIZED) {
+@@ -540,9 +397,9 @@ void SDL_WinRTApp::OnVisibilityChanged(CoreWindow ^ sender, VisibilityChangedEve
+     }
+ }
+ 
+-void SDL_WinRTApp::OnWindowActivated(CoreWindow ^ sender, WindowActivatedEventArgs ^ args)
++void SDL_WinRTApp::OnWindowActivated(CoreWindow const &sender, WindowActivatedEventArgs const &args)
+ {
+-#if LOG_WINDOW_EVENTS == 1
++#ifdef LOG_WINDOW_EVENTS
+     SDL_Log("%s, WINRT_GlobalSDLWindow?=%s\n\n",
+             __FUNCTION__,
+             (WINRT_GlobalSDLWindow ? "yes" : "no"));
+@@ -551,13 +408,13 @@ void SDL_WinRTApp::OnWindowActivated(CoreWindow ^ sender, WindowActivatedEventAr
+     /* There's no property in Win 8.x to tell whether a window is active or
+        not.  [De]activation events are, however, sent to the app.  We'll just
+        record those, in case the CoreWindow gets wrapped by an SDL_Window at
+-       some future time.
++       some future time.  The value is a boxed CoreWindowActivationState.
+     */
+-    sender->CustomProperties->Insert("SDLHelperWindowActivationState", args->WindowActivationState);
++    sender.CustomProperties().Insert(L"SDLHelperWindowActivationState", winrt::box_value(args.WindowActivationState()));
+ 
+     SDL_Window *window = WINRT_GlobalSDLWindow;
+     if (window) {
+-        if (args->WindowActivationState != CoreWindowActivationState::Deactivated) {
++        if (args.WindowActivationState() != CoreWindowActivationState::Deactivated) {
+             SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_SHOWN, 0, 0);
+             if (SDL_GetKeyboardFocus() != window) {
+                 SDL_SetKeyboardFocus(window);
+@@ -568,14 +425,9 @@ void SDL_WinRTApp::OnWindowActivated(CoreWindow ^ sender, WindowActivatedEventAr
+                not in WinRT CoreWindow apps (as OnPointerEntered doesn't
+                appear to be called after window-reactivation, at least not
+                in Windows 10, Build 10586.3 (November 2015 update, non-beta).
+-
+-               Don't do it on WinPhone 8.0 though, as CoreWindow's 'PointerPosition'
+-               property isn't available.
+              */
+-#if !SDL_WINAPI_FAMILY_PHONE || NTDDI_VERSION >= NTDDI_WINBLUE
+-            Point cursorPos = WINRT_TransformCursorPosition(window, sender->PointerPosition, TransformToSDLWindowSize);
++            Point cursorPos = WINRT_TransformCursorPosition(window, sender.PointerPosition(), TransformToSDLWindowSize);
+             SDL_SendMouseMotion(0, window, SDL_GLOBAL_MOUSE_ID, false, cursorPos.X, cursorPos.Y);
+-#endif
+ 
+             // TODO, WinRT: see if the Win32 bugfix from https://hg.libsdl.org/SDL/rev/d278747da408 needs to be applied (on window activation)
+             // WIN_CheckAsyncMouseRelease(data);
+@@ -602,31 +454,27 @@ void SDL_WinRTApp::OnWindowActivated(CoreWindow ^ sender, WindowActivatedEventAr
+     }
+ }
+ 
+-void SDL_WinRTApp::OnWindowClosed(CoreWindow ^ sender, CoreWindowEventArgs ^ args)
++void SDL_WinRTApp::OnWindowClosed(CoreWindow const &sender, CoreWindowEventArgs const &args)
+ {
+-#if LOG_WINDOW_EVENTS == 1
++#ifdef LOG_WINDOW_EVENTS
+     SDL_Log("%s\n", __FUNCTION__);
+ #endif
+     m_windowClosed = true;
+ }
+ 
+-void SDL_WinRTApp::OnAppActivated(CoreApplicationView ^ applicationView, IActivatedEventArgs ^ args)
++void SDL_WinRTApp::OnAppActivated(CoreApplicationView const &applicationView, IActivatedEventArgs const &args)
+ {
+-    CoreWindow::GetForCurrentThread()->Activate();
+-
+-    if (args->Kind ==
+-        Windows::ApplicationModel::Activation::ActivationKind::Protocol) {
+-
+-        auto protocolActivatedEventArgs = (Windows::ApplicationModel::Activation::
+-            ProtocolActivatedEventArgs^)(args);
+-        auto query = protocolActivatedEventArgs->Uri->QueryParsed;
++    CoreWindow::GetForCurrentThread().Activate();
+ 
+-        for (uint32_t i = 0; i < query->Size; i++) {
+-            auto arg = query->GetAt(i);
++    if (args.Kind() == ActivationKind::Protocol) {
++        auto protocolActivatedEventArgs = args.as<ProtocolActivatedEventArgs>();
++        auto query = protocolActivatedEventArgs.Uri().QueryParsed();
+ 
++        for (auto const &arg : query) {
+             // parse command line string
+-            if (arg->Name == L"cmd") {
+-                std::wstring argVal(arg->Value->Begin(), arg->Value->End());
++            if (arg.Name() == L"cmd") {
++                // The cmd argument is not used yet.
++                //std::wstring argVal(arg.Value().c_str());
+                 // Strip the executable from the cmd argument
+                 //if (argVal.rfind(L".exe", 0) == 0) {
+                 //    argVal = argVal.substr(15, argVal.length());
+@@ -639,15 +487,15 @@ void SDL_WinRTApp::OnAppActivated(CoreApplicationView ^ applicationView, IActiva
+                 //while (iss >> std::quoted(s, '"', (char)0)) {
+                 //    filePath << s;
+                 //}
+-            } else if (arg->Name == L"launchOnExit") {
++            } else if (arg.Name() == L"launchOnExit") {
+                 // For if we want to return to a frontend
+-                m_launchOnExit = arg->Value;
++                m_launchOnExit = arg.Value();
+             }
+         }
+     }
+ }
+ 
+-void SDL_WinRTApp::OnSuspending(Platform::Object ^ sender, SuspendingEventArgs ^ args)
++void SDL_WinRTApp::OnSuspending(IInspectable const &sender, SuspendingEventArgs const &args)
+ {
+     // Save app state asynchronously after requesting a deferral. Holding a deferral
+     // indicates that the application is busy performing suspending operations. Be
+@@ -663,8 +511,9 @@ void SDL_WinRTApp::OnSuspending(Platform::Object ^ sender, SuspendingEventArgs ^
+     // this could be important.
+     SDL_SendAppEvent(SDL_EVENT_WILL_ENTER_BACKGROUND);
+ 
+-    SuspendingDeferral ^ deferral = args->SuspendingOperation->GetDeferral();
+-    create_task([this, deferral]() {
++    SuspendingDeferral deferral = args.SuspendingOperation().GetDeferral();
++    // A thread-pool work item, like the PPL task this replaces.
++    Windows::System::Threading::ThreadPool::RunAsync([deferral](auto &&) {
+         // Send an app did-enter-background event immediately to observers.
+         // CoreDispatcher::ProcessEvents, which is the backbone on which
+         // SDL_WinRTApp::PumpEvents is built, will not return to its caller
+@@ -686,11 +535,11 @@ void SDL_WinRTApp::OnSuspending(Platform::Object ^ sender, SuspendingEventArgs ^
+         }
+ #endif
+ 
+-        deferral->Complete();
++        deferral.Complete();
+     });
+ }
+ 
+-void SDL_WinRTApp::OnResuming(Platform::Object ^ sender, Platform::Object ^ args)
++void SDL_WinRTApp::OnResuming(IInspectable const &sender, IInspectable const &args)
+ {
+     // Restore any data or state that was unloaded on suspend. By default, data
+     // and state are persisted when resuming from suspend. Note that these events
+@@ -699,123 +548,109 @@ void SDL_WinRTApp::OnResuming(Platform::Object ^ sender, Platform::Object ^ args
+     SDL_SendAppEvent(SDL_EVENT_DID_ENTER_FOREGROUND);
+ }
+ 
+-void SDL_WinRTApp::OnExiting(Platform::Object ^ sender, Platform::Object ^ args)
++void SDL_WinRTApp::OnExiting(IInspectable const &sender, IInspectable const &args)
+ {
+     SDL_SendAppEvent(SDL_EVENT_TERMINATING);
+ }
+ 
+-static void WINRT_LogPointerEvent(const char *header, Windows::UI::Core::PointerEventArgs ^ args, Windows::Foundation::Point transformedPoint)
++#ifdef LOG_POINTER_EVENTS
++static void WINRT_LogPointerEvent(const char *header, Windows::UI::Core::PointerEventArgs const &args, Windows::Foundation::Point transformedPoint)
+ {
+     Uint8 button, pressed;
+-    Windows::UI::Input::PointerPoint ^ pt = args->CurrentPoint;
++    Windows::UI::Input::PointerPoint pt = args.CurrentPoint();
+     WINRT_GetSDLButtonForPointerPoint(pt, &button, &pressed);
+     SDL_Log("%s: Position={%f,%f}, Transformed Pos={%f, %f}, MouseWheelDelta=%d, FrameId=%d, PointerId=%d, SDL button=%d pressed=%d\n",
+             header,
+-            pt->Position.X, pt->Position.Y,
++            pt.Position().X, pt.Position().Y,
+             transformedPoint.X, transformedPoint.Y,
+-            pt->Properties->MouseWheelDelta,
+-            pt->FrameId,
+-            pt->PointerId,
++            pt.Properties().MouseWheelDelta(),
++            pt.FrameId(),
++            pt.PointerId(),
+             button,
+             pressed);
+ }
++#endif
+ 
+-void SDL_WinRTApp::OnPointerPressed(CoreWindow ^ sender, PointerEventArgs ^ args)
++void SDL_WinRTApp::OnPointerPressed(CoreWindow const &sender, PointerEventArgs const &args)
+ {
+-#if LOG_POINTER_EVENTS
+-    WINRT_LogPointerEvent("pointer pressed", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args->CurrentPoint->Position, TransformToSDLWindowSize));
++#ifdef LOG_POINTER_EVENTS
++    WINRT_LogPointerEvent("pointer pressed", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args.CurrentPoint().Position(), TransformToSDLWindowSize));
+ #endif
+ 
+-    WINRT_ProcessPointerPressedEvent(WINRT_GlobalSDLWindow, args->CurrentPoint);
++    WINRT_ProcessPointerPressedEvent(WINRT_GlobalSDLWindow, args.CurrentPoint());
+ }
+ 
+-void SDL_WinRTApp::OnPointerMoved(CoreWindow ^ sender, PointerEventArgs ^ args)
++void SDL_WinRTApp::OnPointerMoved(CoreWindow const &sender, PointerEventArgs const &args)
+ {
+-#if LOG_POINTER_EVENTS
+-    WINRT_LogPointerEvent("pointer moved", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args->CurrentPoint->Position, TransformToSDLWindowSize));
++#ifdef LOG_POINTER_EVENTS
++    WINRT_LogPointerEvent("pointer moved", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args.CurrentPoint().Position(), TransformToSDLWindowSize));
+ #endif
+ 
+-    WINRT_ProcessPointerMovedEvent(WINRT_GlobalSDLWindow, args->CurrentPoint);
++    WINRT_ProcessPointerMovedEvent(WINRT_GlobalSDLWindow, args.CurrentPoint());
+ }
+ 
+-void SDL_WinRTApp::OnPointerReleased(CoreWindow ^ sender, PointerEventArgs ^ args)
++void SDL_WinRTApp::OnPointerReleased(CoreWindow const &sender, PointerEventArgs const &args)
+ {
+-#if LOG_POINTER_EVENTS
+-    WINRT_LogPointerEvent("pointer released", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args->CurrentPoint->Position, TransformToSDLWindowSize));
++#ifdef LOG_POINTER_EVENTS
++    WINRT_LogPointerEvent("pointer released", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args.CurrentPoint().Position(), TransformToSDLWindowSize));
+ #endif
+ 
+-    WINRT_ProcessPointerReleasedEvent(WINRT_GlobalSDLWindow, args->CurrentPoint);
++    WINRT_ProcessPointerReleasedEvent(WINRT_GlobalSDLWindow, args.CurrentPoint());
+ }
+ 
+-void SDL_WinRTApp::OnPointerEntered(CoreWindow ^ sender, PointerEventArgs ^ args)
++void SDL_WinRTApp::OnPointerEntered(CoreWindow const &sender, PointerEventArgs const &args)
+ {
+-#if LOG_POINTER_EVENTS
+-    WINRT_LogPointerEvent("pointer entered", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args->CurrentPoint->Position, TransformToSDLWindowSize));
++#ifdef LOG_POINTER_EVENTS
++    WINRT_LogPointerEvent("pointer entered", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args.CurrentPoint().Position(), TransformToSDLWindowSize));
+ #endif
+ 
+-    WINRT_ProcessPointerEnteredEvent(WINRT_GlobalSDLWindow, args->CurrentPoint);
++    WINRT_ProcessPointerEnteredEvent(WINRT_GlobalSDLWindow, args.CurrentPoint());
+ }
+ 
+-void SDL_WinRTApp::OnPointerExited(CoreWindow ^ sender, PointerEventArgs ^ args)
++void SDL_WinRTApp::OnPointerExited(CoreWindow const &sender, PointerEventArgs const &args)
+ {
+-#if LOG_POINTER_EVENTS
+-    WINRT_LogPointerEvent("pointer exited", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args->CurrentPoint->Position, TransformToSDLWindowSize));
++#ifdef LOG_POINTER_EVENTS
++    WINRT_LogPointerEvent("pointer exited", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args.CurrentPoint().Position(), TransformToSDLWindowSize));
+ #endif
+ 
+-    WINRT_ProcessPointerExitedEvent(WINRT_GlobalSDLWindow, args->CurrentPoint);
++    WINRT_ProcessPointerExitedEvent(WINRT_GlobalSDLWindow, args.CurrentPoint());
+ }
+ 
+-void SDL_WinRTApp::OnPointerWheelChanged(CoreWindow ^ sender, PointerEventArgs ^ args)
++void SDL_WinRTApp::OnPointerWheelChanged(CoreWindow const &sender, PointerEventArgs const &args)
+ {
+-#if LOG_POINTER_EVENTS
+-    WINRT_LogPointerEvent("pointer wheel changed", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args->CurrentPoint->Position, TransformToSDLWindowSize));
++#ifdef LOG_POINTER_EVENTS
++    WINRT_LogPointerEvent("pointer wheel changed", args, WINRT_TransformCursorPosition(WINRT_GlobalSDLWindow, args.CurrentPoint().Position(), TransformToSDLWindowSize));
+ #endif
+ 
+-    WINRT_ProcessPointerWheelChangedEvent(WINRT_GlobalSDLWindow, args->CurrentPoint);
++    WINRT_ProcessPointerWheelChangedEvent(WINRT_GlobalSDLWindow, args.CurrentPoint());
+ }
+ 
+-void SDL_WinRTApp::OnMouseMoved(MouseDevice ^ mouseDevice, MouseEventArgs ^ args)
++void SDL_WinRTApp::OnMouseMoved(MouseDevice const &mouseDevice, MouseEventArgs const &args)
+ {
+     WINRT_ProcessMouseMovedEvent(WINRT_GlobalSDLWindow, args);
+ }
+ 
+-void SDL_WinRTApp::OnAcceleratorKeyActivated(Windows::UI::Core::CoreDispatcher ^ sender, Windows::UI::Core::AcceleratorKeyEventArgs ^ args)
++void SDL_WinRTApp::OnAcceleratorKeyActivated(Windows::UI::Core::CoreDispatcher const &sender, Windows::UI::Core::AcceleratorKeyEventArgs const &args)
+ {
+     WINRT_ProcessAcceleratorKeyActivated(args);
+ }
+ 
+-void SDL_WinRTApp::OnCharacterReceived(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::CharacterReceivedEventArgs ^ args)
++void SDL_WinRTApp::OnCharacterReceived(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::CharacterReceivedEventArgs const &args)
+ {
+     WINRT_ProcessCharacterReceivedEvent(WINRT_GlobalSDLWindow, args);
+ }
+ 
+-template <typename BackButtonEventArgs>
+-static void WINRT_OnBackButtonPressed(BackButtonEventArgs ^ args)
++void SDL_WinRTApp::OnBackButtonPressed(IInspectable const &sender, Windows::UI::Core::BackRequestedEventArgs const &args)
+ {
+     SDL_SendKeyboardKey(0, SDL_GLOBAL_KEYBOARD_ID, 0, SDL_SCANCODE_AC_BACK, 0);
+     SDL_SendKeyboardKey(0, SDL_GLOBAL_KEYBOARD_ID, 0, SDL_SCANCODE_AC_BACK, 1);
+ 
+     if (SDL_GetHintBoolean(SDL_HINT_WINRT_HANDLE_BACK_BUTTON, false)) {
+-        args->Handled = true;
++        args.Handled(true);
+     }
+ }
+ 
+-#if NTDDI_VERSION >= NTDDI_WIN10
+-void SDL_WinRTApp::OnBackButtonPressed(Platform::Object ^ sender, Windows::UI::Core::BackRequestedEventArgs ^ args)
+-
+-{
+-    WINRT_OnBackButtonPressed(args);
+-}
+-#elif SDL_WINAPI_FAMILY_PHONE
+-void SDL_WinRTApp::OnBackButtonPressed(Platform::Object ^ sender, Windows::Phone::UI::Input::BackPressedEventArgs ^ args)
+-
+-{
+-    WINRT_OnBackButtonPressed(args);
+-}
+-#endif
+-
+-#if NTDDI_VERSION >= NTDDI_WIN10
+-void SDL_WinRTApp::OnGamepadAdded(Platform::Object ^ sender, Windows::Gaming::Input::Gamepad ^ gamepad)
++void SDL_WinRTApp::OnGamepadAdded(IInspectable const &sender, Windows::Gaming::Input::Gamepad const &gamepad)
+ {
+     /* HACK ALERT: Nothing needs to be done here, as this method currently
+        only exists to allow something to be registered with Win10's
+@@ -823,4 +658,3 @@ void SDL_WinRTApp::OnGamepadAdded(Platform::Object ^ sender, Windows::Gaming::In
+        Xinput-based detection to work on Xbox One.
+     */
+ }
+-#endif
+diff --git a/src/core/winrt/SDL_winrtapp_direct3d.h b/src/core/winrt/SDL_winrtapp_direct3d.h
+index 34418dfa1..0eeae65df 100644
+--- a/src/core/winrt/SDL_winrtapp_direct3d.h
++++ b/src/core/winrt/SDL_winrtapp_direct3d.h
+@@ -20,78 +20,59 @@
+ */
+ #include <Windows.h>
+ 
++#include "SDL_winrt_cppwinrt.h"
++
+ extern bool SDL_WinRTInitNonXAMLApp(int (*mainFunction)(int, char **));
+ 
+-ref class SDL_WinRTApp sealed : public Windows::ApplicationModel::Core::IFrameworkView
++struct SDL_WinRTApp : winrt::implements<SDL_WinRTApp, Windows::ApplicationModel::Core::IFrameworkView>
+ {
+-  public:
+     SDL_WinRTApp();
+ 
+     // IFrameworkView Methods.
+-    virtual void Initialize(Windows::ApplicationModel::Core::CoreApplicationView ^ applicationView);
+-    virtual void SetWindow(Windows::UI::Core::CoreWindow ^ window);
+-    virtual void Load(Platform::String ^ entryPoint);
+-    virtual void Run();
+-    virtual void Uninitialize();
++    void Initialize(Windows::ApplicationModel::Core::CoreApplicationView const &applicationView);
++    void SetWindow(Windows::UI::Core::CoreWindow const &window);
++    void Load(winrt::hstring const &entryPoint);
++    void Run();
++    void Uninitialize();
+ 
+-    void SDL_WinRTApp::App_BackRequested(
+-        Platform::Object ^ sender,
+-        Windows::UI::Core::BackRequestedEventArgs ^ e);
++    void App_BackRequested(
++        Windows::Foundation::IInspectable const &sender,
++        Windows::UI::Core::BackRequestedEventArgs const &e);
+ 
+-    internal :
+-        // SDL-specific methods
+-        void
+-        PumpEvents();
++    // SDL-specific methods
++    void PumpEvents();
+ 
+   protected:
+     bool ShouldWaitForAppResumeEvents();
+ 
+     // Event Handlers.
+-
+-#if (WINAPI_FAMILY == WINAPI_FAMILY_APP) && (NTDDI_VERSION < NTDDI_WIN10) // for Windows 8/8.1/RT apps... (and not Phone apps)
+-    void OnSettingsPaneCommandsRequested(
+-        Windows::UI::ApplicationSettings::SettingsPane ^ p,
+-        Windows::UI::ApplicationSettings::SettingsPaneCommandsRequestedEventArgs ^ args);
+-#endif // if (WINAPI_FAMILY == WINAPI_FAMILY_APP) && (NTDDI_VERSION < NTDDI_WIN10)
+-
+-#if NTDDI_VERSION > NTDDI_WIN8
+-    void OnOrientationChanged(Windows::Graphics::Display::DisplayInformation ^ sender, Platform::Object ^ args);
+-#else
+-    void OnOrientationChanged(Platform::Object ^ sender);
+-#endif
+-    void OnWindowSizeChanged(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::WindowSizeChangedEventArgs ^ args);
+-    void OnLogicalDpiChanged(Platform::Object ^ sender);
+-    void OnAppActivated(Windows::ApplicationModel::Core::CoreApplicationView ^ applicationView, Windows::ApplicationModel::Activation::IActivatedEventArgs ^ args);
+-    void OnSuspending(Platform::Object ^ sender, Windows::ApplicationModel::SuspendingEventArgs ^ args);
+-    void OnResuming(Platform::Object ^ sender, Platform::Object ^ args);
+-    void OnExiting(Platform::Object ^ sender, Platform::Object ^ args);
+-    void OnWindowActivated(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::WindowActivatedEventArgs ^ args);
+-    void OnWindowClosed(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::CoreWindowEventArgs ^ args);
+-    void OnVisibilityChanged(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::VisibilityChangedEventArgs ^ args);
+-    void OnPointerPressed(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::PointerEventArgs ^ args);
+-    void OnPointerReleased(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::PointerEventArgs ^ args);
+-    void OnPointerWheelChanged(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::PointerEventArgs ^ args);
+-    void OnPointerMoved(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::PointerEventArgs ^ args);
+-    void OnPointerEntered(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::PointerEventArgs ^ args);
+-    void OnPointerExited(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::PointerEventArgs ^ args);
+-    void OnMouseMoved(Windows::Devices::Input::MouseDevice ^ mouseDevice, Windows::Devices::Input::MouseEventArgs ^ args);
+-    void OnAcceleratorKeyActivated(Windows::UI::Core::CoreDispatcher ^ sender, Windows::UI::Core::AcceleratorKeyEventArgs ^ args);
+-    void OnCharacterReceived(Windows::UI::Core::CoreWindow ^ sender, Windows::UI::Core::CharacterReceivedEventArgs ^ args);
+-
+-#if NTDDI_VERSION >= NTDDI_WIN10
+-    void OnBackButtonPressed(Platform::Object ^ sender, Windows::UI::Core::BackRequestedEventArgs ^ args);
+-#elif SDL_WINAPI_FAMILY_PHONE
+-    void OnBackButtonPressed(Platform::Object ^ sender, Windows::Phone::UI::Input::BackPressedEventArgs ^ args);
+-#endif
+-
+-#if NTDDI_VERSION >= NTDDI_WIN10
+-    void OnGamepadAdded(Platform::Object ^ sender, Windows::Gaming::Input::Gamepad ^ gamepad);
+-#endif
++    void OnOrientationChanged(Windows::Graphics::Display::DisplayInformation const &sender, Windows::Foundation::IInspectable const &args);
++    void OnWindowSizeChanged(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::WindowSizeChangedEventArgs const &args);
++    void OnLogicalDpiChanged(Windows::Foundation::IInspectable const &sender);
++    void OnAppActivated(Windows::ApplicationModel::Core::CoreApplicationView const &applicationView, Windows::ApplicationModel::Activation::IActivatedEventArgs const &args);
++    void OnSuspending(Windows::Foundation::IInspectable const &sender, Windows::ApplicationModel::SuspendingEventArgs const &args);
++    void OnResuming(Windows::Foundation::IInspectable const &sender, Windows::Foundation::IInspectable const &args);
++    void OnExiting(Windows::Foundation::IInspectable const &sender, Windows::Foundation::IInspectable const &args);
++    void OnWindowActivated(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::WindowActivatedEventArgs const &args);
++    void OnWindowClosed(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::CoreWindowEventArgs const &args);
++    void OnVisibilityChanged(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::VisibilityChangedEventArgs const &args);
++    void OnPointerPressed(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::PointerEventArgs const &args);
++    void OnPointerReleased(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::PointerEventArgs const &args);
++    void OnPointerWheelChanged(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::PointerEventArgs const &args);
++    void OnPointerMoved(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::PointerEventArgs const &args);
++    void OnPointerEntered(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::PointerEventArgs const &args);
++    void OnPointerExited(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::PointerEventArgs const &args);
++    void OnMouseMoved(Windows::Devices::Input::MouseDevice const &mouseDevice, Windows::Devices::Input::MouseEventArgs const &args);
++    void OnAcceleratorKeyActivated(Windows::UI::Core::CoreDispatcher const &sender, Windows::UI::Core::AcceleratorKeyEventArgs const &args);
++    void OnCharacterReceived(Windows::UI::Core::CoreWindow const &sender, Windows::UI::Core::CharacterReceivedEventArgs const &args);
++    void OnBackButtonPressed(Windows::Foundation::IInspectable const &sender, Windows::UI::Core::BackRequestedEventArgs const &args);
++    void OnGamepadAdded(Windows::Foundation::IInspectable const &sender, Windows::Gaming::Input::Gamepad const &gamepad);
+ 
+   private:
+     bool m_windowClosed;
+     bool m_windowVisible;
+-    Platform::String^ m_launchOnExit;
++    winrt::hstring m_launchOnExit;
+ };
+ 
+-extern SDL_WinRTApp ^ SDL_WinRTGlobalApp;
++// Set while the app's view exists; the CoreApplication holds the reference.
++extern SDL_WinRTApp *SDL_WinRTGlobalApp;
+diff --git a/src/core/winrt/SDL_winrtapp_xaml.cpp b/src/core/winrt/SDL_winrtapp_xaml.cpp
+index 226500d7e..2584ddf34 100644
+--- a/src/core/winrt/SDL_winrtapp_xaml.cpp
++++ b/src/core/winrt/SDL_winrtapp_xaml.cpp
+@@ -20,145 +20,30 @@
+ */
+ #include "SDL_internal.h"
+ 
+-// Windows includes
+-#include <agile.h>
+-#include <Windows.h>
++/* Embedding SDL in a XAML SwapChainBackgroundPanel needs C++/CX (it is built
++   on Windows::UI::Xaml types declared with /ZW). The C++/WinRT build of the
++   WinRT backend supports non-XAML (CoreWindow) apps only; these stubs keep
++   the rest of the backend linking and report XAML as unsupported. */
+ 
+-#if WINAPI_FAMILY == WINAPI_FAMILY_APP
+-#include <windows.ui.xaml.media.dxinterop.h>
+-#endif
+-
+-// SDL includes
+-#include "../../video/winrt/SDL_winrtevents_c.h"
+-#include "../../video/winrt/SDL_winrtvideo_cpp.h"
+-#include "SDL_winrtapp_common.h"
+ #include "SDL_winrtapp_xaml.h"
+ 
+-// SDL-internal globals:
+ bool WINRT_XAMLWasEnabled = false;
+ 
+-#if WINAPI_FAMILY == WINAPI_FAMILY_APP
+-static ISwapChainBackgroundPanelNative *WINRT_SwapChainBackgroundPanelNative = NULL;
+-static Windows::Foundation::EventRegistrationToken WINRT_XAMLAppEventToken;
+-#endif
+-
+ extern "C" void *
+ WINRT_GetSwapChainBackgroundPanelNative(void)
+ {
+-#if WINAPI_FAMILY == WINAPI_FAMILY_APP
+-    return WINRT_SwapChainBackgroundPanelNative;
+-#else
+     return NULL;
+-#endif
+ }
+ 
+ extern "C" void
+ WINRT_DetachSwapChainBackgroundPanelNative(void)
+ {
+-#if WINAPI_FAMILY == WINAPI_FAMILY_APP
+-    WINRT_SwapChainBackgroundPanelNative = NULL;
+-#endif
+-}
+-
+-/*
+- * Input event handlers (XAML)
+- */
+-#if WINAPI_FAMILY == WINAPI_FAMILY_APP
+-
+-static void WINRT_OnPointerPressedViaXAML(Platform::Object ^ sender, Windows::UI::Xaml::Input::PointerRoutedEventArgs ^ args)
+-{
+-    WINRT_ProcessPointerPressedEvent(WINRT_GlobalSDLWindow, args->GetCurrentPoint(nullptr));
+-}
+-
+-static void WINRT_OnPointerMovedViaXAML(Platform::Object ^ sender, Windows::UI::Xaml::Input::PointerRoutedEventArgs ^ args)
+-{
+-    WINRT_ProcessPointerMovedEvent(WINRT_GlobalSDLWindow, args->GetCurrentPoint(nullptr));
+-}
+-
+-static void WINRT_OnPointerReleasedViaXAML(Platform::Object ^ sender, Windows::UI::Xaml::Input::PointerRoutedEventArgs ^ args)
+-{
+-    WINRT_ProcessPointerReleasedEvent(WINRT_GlobalSDLWindow, args->GetCurrentPoint(nullptr));
+-}
+-
+-static void WINRT_OnPointerWheelChangedViaXAML(Platform::Object ^ sender, Windows::UI::Xaml::Input::PointerRoutedEventArgs ^ args)
+-{
+-    WINRT_ProcessPointerWheelChangedEvent(WINRT_GlobalSDLWindow, args->GetCurrentPoint(nullptr));
+-}
+-
+-#endif // WINAPI_FAMILY == WINAPI_FAMILY_APP
+-
+-/*
+- * XAML-to-SDL Rendering Callback
+- */
+-#if WINAPI_FAMILY == WINAPI_FAMILY_APP
+-
+-static void WINRT_OnRenderViaXAML(_In_ Platform::Object ^ sender, _In_ Platform::Object ^ args)
+-{
+-    WINRT_CycleXAMLThread();
+ }
+ 
+-#endif // WINAPI_FAMILY == WINAPI_FAMILY_APP
+-
+-/*
+- * SDL + XAML Initialization
+- */
+-
+ bool SDL_WinRTInitXAMLApp(int (*mainFunction)(int, char **), void *backgroundPanelAsIInspectable)
+ {
+-#if SDL_WINAPI_FAMILY_PHONE
+-    return SDL_SetError("XAML support is not yet available in Windows Phone.");
+-#else
+-    // Declare C++/CX namespaces:
+-    using namespace Platform;
+-    using namespace Windows::Foundation;
+-    using namespace Windows::UI::Core;
+-    using namespace Windows::UI::Xaml;
+-    using namespace Windows::UI::Xaml::Controls;
+-    using namespace Windows::UI::Xaml::Input;
+-    using namespace Windows::UI::Xaml::Media;
+-
+-    // Make sure we have a valid XAML element (to draw onto):
+-    if (!backgroundPanelAsIInspectable) {
+-        return SDL_InvalidParamError("backgroundPanelAsIInspectable");
+-    }
+-
+-    Platform::Object ^ backgroundPanel = reinterpret_cast<Object ^>((IInspectable *)backgroundPanelAsIInspectable);
+-    SwapChainBackgroundPanel ^ swapChainBackgroundPanel = dynamic_cast<SwapChainBackgroundPanel ^>(backgroundPanel);
+-    if (!swapChainBackgroundPanel) {
+-        return SDL_SetError("An unknown or unsupported type of XAML control was specified.");
+-    }
+-
+-    // Setup event handlers:
+-    swapChainBackgroundPanel->PointerPressed += ref new PointerEventHandler(WINRT_OnPointerPressedViaXAML);
+-    swapChainBackgroundPanel->PointerReleased += ref new PointerEventHandler(WINRT_OnPointerReleasedViaXAML);
+-    swapChainBackgroundPanel->PointerWheelChanged += ref new PointerEventHandler(WINRT_OnPointerWheelChangedViaXAML);
+-    swapChainBackgroundPanel->PointerMoved += ref new PointerEventHandler(WINRT_OnPointerMovedViaXAML);
+-
+-    // Setup for rendering:
+-    IInspectable *panelInspectable = (IInspectable *)reinterpret_cast<IInspectable *>(swapChainBackgroundPanel);
+-    panelInspectable->QueryInterface(__uuidof(ISwapChainBackgroundPanelNative), (void **)&WINRT_SwapChainBackgroundPanelNative);
+-
+-    WINRT_XAMLAppEventToken = CompositionTarget::Rendering::add(ref new EventHandler<Object ^>(WINRT_OnRenderViaXAML));
+-
+-    // Make sure the app is ready to call the SDL-centric main() function:
+-    WINRT_SDLAppEntryPoint = mainFunction;
+-    SDL_SetMainReady();
+-
+-    // Make sure video-init knows that we're initializing XAML:
+-    bool oldXAMLWasEnabledValue = WINRT_XAMLWasEnabled;
+-    WINRT_XAMLWasEnabled = true;
+-
+-    // Make sure video modes are detected now, while we still have access to the WinRT
+-    // CoreWindow.  WinRT will not allow the app's CoreWindow to be accessed via the
+-    // SDL/WinRT thread.
+-    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+-        // SDL_InitSubSystem will, on error, set the SDL error.  Let that propagate to
+-        // the caller to here:
+-        WINRT_XAMLWasEnabled = oldXAMLWasEnabledValue;
+-        return false;
+-    }
+-
+-    // All done, for now.
+-    return true;
+-#endif // SDL_WINAPI_FAMILY_PHONE
++    (void)mainFunction;
++    (void)backgroundPanelAsIInspectable;
++    SDL_Unsupported();
++    return false;
+ }
+diff --git a/src/filesystem/winrt/SDL_sysfilesystem.cpp b/src/filesystem/winrt/SDL_sysfilesystem.cpp
+index 760a42440..70f48146e 100644
+--- a/src/filesystem/winrt/SDL_sysfilesystem.cpp
++++ b/src/filesystem/winrt/SDL_sysfilesystem.cpp
+@@ -30,6 +30,8 @@ extern "C" {
+ #include "../SDL_sysfilesystem.h"
+ }
+ 
++#include "../../core/winrt/SDL_winrt_cppwinrt.h"
++
+ #include <string>
+ #include <unordered_map>
+ 
+@@ -43,16 +45,7 @@ static const wchar_t *SDL_GetWinRTFSPathUNICODE(SDL_WinRT_Path pathType)
+     {
+         static wstring path;
+         if (path.empty()) {
+-#if defined(NTDDI_WIN10_19H1) && (NTDDI_VERSION >= NTDDI_WIN10_19H1) && (WINAPI_FAMILY == WINAPI_FAMILY_PC_APP) // Only PC supports mods
+-            // Windows 1903 supports mods, via the EffectiveLocation API
+-            if (Windows::Foundation::Metadata::ApiInformation::IsApiContractPresent("Windows.Foundation.UniversalApiContract", 8, 0)) {
+-                path = Windows::ApplicationModel::Package::Current->EffectiveLocation->Path->Data();
+-            } else {
+-                path = Windows::ApplicationModel::Package::Current->InstalledLocation->Path->Data();
+-            }
+-#else
+-            path = Windows::ApplicationModel::Package::Current->InstalledLocation->Path->Data();
+-#endif
++            path = Windows::ApplicationModel::Package::Current().InstalledLocation().Path().c_str();
+         }
+         return path.c_str();
+     }
+@@ -61,17 +54,16 @@ static const wchar_t *SDL_GetWinRTFSPathUNICODE(SDL_WinRT_Path pathType)
+     {
+         static wstring path;
+         if (path.empty()) {
+-            path = ApplicationData::Current->LocalFolder->Path->Data();
++            path = ApplicationData::Current().LocalFolder().Path().c_str();
+         }
+         return path.c_str();
+     }
+ 
+-#if !SDL_WINAPI_FAMILY_PHONE || NTDDI_VERSION > NTDDI_WIN8
+     case SDL_WINRT_PATH_ROAMING_FOLDER:
+     {
+         static wstring path;
+         if (path.empty()) {
+-            path = ApplicationData::Current->RoamingFolder->Path->Data();
++            path = ApplicationData::Current().RoamingFolder().Path().c_str();
+         }
+         return path.c_str();
+     }
+@@ -80,11 +72,10 @@ static const wchar_t *SDL_GetWinRTFSPathUNICODE(SDL_WinRT_Path pathType)
+     {
+         static wstring path;
+         if (path.empty()) {
+-            path = ApplicationData::Current->TemporaryFolder->Path->Data();
++            path = ApplicationData::Current().TemporaryFolder().Path().c_str();
+         }
+         return path.c_str();
+     }
+-#endif
+ 
+     default:
+         break;
+@@ -231,7 +222,7 @@ char *SDL_SYS_GetUserFolder(SDL_Folder folder)
+     wstring wpath;
+ 
+     switch (folder) {
+-        #define CASEPATH(sym, var) case sym: wpath = Windows::Storage::UserDataPaths::GetDefault()->var->Data(); break
++        #define CASEPATH(sym, var) case sym: wpath = Windows::Storage::UserDataPaths::GetDefault().var().c_str(); break
+         CASEPATH(SDL_FOLDER_HOME, Profile);
+         CASEPATH(SDL_FOLDER_DESKTOP, Desktop);
+         CASEPATH(SDL_FOLDER_DOCUMENTS, Documents);
+diff --git a/src/joystick/windows/SDL_windows_gaming_input.c b/src/joystick/windows/SDL_windows_gaming_input.c
+index d27681c93..7502330d9 100644
+--- a/src/joystick/windows/SDL_windows_gaming_input.c
++++ b/src/joystick/windows/SDL_windows_gaming_input.c
+@@ -586,7 +586,13 @@ static bool WGI_JoystickInit(void)
+ {
+     HRESULT hr;
+ 
+-    if (!SDL_GetHintBoolean(SDL_HINT_JOYSTICK_WGI, false)) {
++#ifdef SDL_PLATFORM_WINRT
++    // The only gamepad driver available to a UWP app.
++    const bool default_enabled = true;
++#else
++    const bool default_enabled = false;
++#endif
++    if (!SDL_GetHintBoolean(SDL_HINT_JOYSTICK_WGI, default_enabled)) {
+         return true;
+     }
+ 
+diff --git a/src/main/winrt/SDL_sysmain_runapp.cpp b/src/main/winrt/SDL_sysmain_runapp.cpp
+index 8c4b0662a..0839b3775 100644
+--- a/src/main/winrt/SDL_sysmain_runapp.cpp
++++ b/src/main/winrt/SDL_sysmain_runapp.cpp
+@@ -23,8 +23,6 @@
+ #include "../../core/winrt/SDL_winrtapp_direct3d.h"
+ #include "../../core/winrt/SDL_winrtapp_xaml.h"
+ 
+-#include <wrl.h>
+-
+ extern "C"
+ int SDL_RunApp(int, char**, SDL_main_func mainFunction, void * xamlBackgroundPanel)
+ {
+@@ -35,7 +33,12 @@ int SDL_RunApp(int, char**, SDL_main_func mainFunction, void * xamlBackgroundPan
+         }
+     } else {
+ #endif
+-        if (FAILED(Windows::Foundation::Initialize(RO_INIT_MULTITHREADED))) {
++        /* CoreApplication requires its first use to come from the
++           multi-threaded apartment; without this, CoreApplication::Run
++           fails with RPC_E_WRONG_THREAD (0x8001010E). */
++        try {
++            winrt::init_apartment(winrt::apartment_type::multi_threaded);
++        } catch (winrt::hresult_error const &) {
+             return 1;
+         }
+         if (!SDL_WinRTInitNonXAMLApp(mainFunction)) {
+diff --git a/src/misc/winrt/SDL_sysurl.cpp b/src/misc/winrt/SDL_sysurl.cpp
+index 0026e615e..81328e5b1 100644
+--- a/src/misc/winrt/SDL_sysurl.cpp
++++ b/src/misc/winrt/SDL_sysurl.cpp
+@@ -22,6 +22,7 @@
+ 
+ #include "../SDL_sysurl.h"
+ #include "../../core/windows/SDL_windows.h"
++#include "../../core/winrt/SDL_winrt_cppwinrt.h"
+ 
+ bool SDL_SYS_OpenURL(const char *url)
+ {
+@@ -29,10 +30,13 @@ bool SDL_SYS_OpenURL(const char *url)
+     if (!wurl) {
+         return false;
+     }
+-    auto strurl = ref new Platform::String(wurl);
+-    SDL_free(wurl);
+-
+-    auto uri = ref new Windows::Foundation::Uri(strurl);
+-    Windows::System::Launcher::LaunchUriAsync(uri);
++    try {
++        Windows::Foundation::Uri uri(wurl);
++        SDL_free(wurl);
++        Windows::System::Launcher::LaunchUriAsync(uri);
++    } catch (winrt::hresult_error const &) {
++        SDL_free(wurl);
++        return SDL_SetError("Couldn't open URL");
++    }
+     return true; // oh well, we're not waiting on an async task here.
+ }
+diff --git a/src/render/direct3d11/SDL_render_d3d11.c b/src/render/direct3d11/SDL_render_d3d11.c
+index 9f32cd18b..200e12de5 100644
+--- a/src/render/direct3d11/SDL_render_d3d11.c
++++ b/src/render/direct3d11/SDL_render_d3d11.c
+@@ -1234,7 +1234,7 @@ void D3D11_Trim(SDL_Renderer *renderer)
+     HRESULT result = S_OK;
+     IDXGIDevice3 *dxgiDevice = NULL;
+ 
+-    result = ID3D11Device_QueryInterface(data->d3dDevice, &SDL_IID_IDXGIDevice3, &dxgiDevice);
++    result = ID3D11Device_QueryInterface(data->d3dDevice, &SDL_IID_IDXGIDevice3, (void **)&dxgiDevice);
+     if (FAILED(result)) {
+         // WIN_SetErrorFromHRESULT(__FUNCTION__ ", ID3D11Device to IDXGIDevice3", result);
+         return;
+diff --git a/src/render/direct3d11/SDL_render_winrt.cpp b/src/render/direct3d11/SDL_render_winrt.cpp
+index 3750aa8e6..613de035a 100644
+--- a/src/render/direct3d11/SDL_render_winrt.cpp
++++ b/src/render/direct3d11/SDL_render_winrt.cpp
+@@ -34,7 +34,7 @@ extern "C" {
+ using namespace Windows::UI::Core;
+ using namespace Windows::Graphics::Display;
+ 
+-#include <DXGI.h>
++#include <dxgi.h>
+ 
+ #include "SDL_render_winrt.h"
+ 
+@@ -60,19 +60,6 @@ D3D11_GetCurrentRotation()
+     const DisplayOrientations currentOrientation = WINRT_DISPLAY_PROPERTY(CurrentOrientation);
+ 
+     switch (currentOrientation) {
+-
+-#if SDL_WINAPI_FAMILY_PHONE
+-    // Windows Phone rotations
+-    case DisplayOrientations::Landscape:
+-        return DXGI_MODE_ROTATION_ROTATE90;
+-    case DisplayOrientations::Portrait:
+-        return DXGI_MODE_ROTATION_IDENTITY;
+-    case DisplayOrientations::LandscapeFlipped:
+-        return DXGI_MODE_ROTATION_ROTATE270;
+-    case DisplayOrientations::PortraitFlipped:
+-        return DXGI_MODE_ROTATION_ROTATE180;
+-#else
+-    // Non-Windows-Phone rotations (ex: Windows 8, Windows RT)
+     case DisplayOrientations::Landscape:
+         return DXGI_MODE_ROTATION_IDENTITY;
+     case DisplayOrientations::Portrait:
+@@ -81,7 +68,8 @@ D3D11_GetCurrentRotation()
+         return DXGI_MODE_ROTATION_ROTATE180;
+     case DisplayOrientations::PortraitFlipped:
+         return DXGI_MODE_ROTATION_ROTATE90;
+-#endif // SDL_WINAPI_FAMILY_PHONE
++    default:
++        break;
+     }
+ 
+     return DXGI_MODE_ROTATION_IDENTITY;
+diff --git a/src/render/direct3d12/SDL_render_d3d12_winrt.cpp b/src/render/direct3d12/SDL_render_d3d12_winrt.cpp
+index 39afaebcf..8f715193a 100644
+--- a/src/render/direct3d12/SDL_render_d3d12_winrt.cpp
++++ b/src/render/direct3d12/SDL_render_d3d12_winrt.cpp
+@@ -37,7 +37,7 @@ extern "C" {
+ using namespace Windows::UI::Core;
+ using namespace Windows::Graphics::Display;
+ 
+-#include <DXGI.h>
++#include <dxgi.h>
+ 
+ #include "SDL_render_d3d12_winrt.h"
+ 
+@@ -63,17 +63,6 @@ D3D12_GetCurrentRotation(void)
+     const DisplayOrientations currentOrientation = WINRT_DISPLAY_PROPERTY(CurrentOrientation);
+ 
+     switch (currentOrientation) {
+-
+-#if SDL_WINAPI_FAMILY_PHONE
+-    case DisplayOrientations::Landscape:
+-        return DXGI_MODE_ROTATION_ROTATE90;
+-    case DisplayOrientations::Portrait:
+-        return DXGI_MODE_ROTATION_IDENTITY;
+-    case DisplayOrientations::LandscapeFlipped:
+-        return DXGI_MODE_ROTATION_ROTATE270;
+-    case DisplayOrientations::PortraitFlipped:
+-        return DXGI_MODE_ROTATION_ROTATE180;
+-#else
+     case DisplayOrientations::Landscape:
+         return DXGI_MODE_ROTATION_IDENTITY;
+     case DisplayOrientations::Portrait:
+@@ -82,7 +71,8 @@ D3D12_GetCurrentRotation(void)
+         return DXGI_MODE_ROTATION_ROTATE180;
+     case DisplayOrientations::PortraitFlipped:
+         return DXGI_MODE_ROTATION_ROTATE90;
+-#endif // SDL_WINAPI_FAMILY_PHONE
++    default:
++        break;
+     }
+ 
+     return DXGI_MODE_ROTATION_IDENTITY;
+diff --git a/src/video/winrt/SDL_winrtevents.cpp b/src/video/winrt/SDL_winrtevents.cpp
+index 3092378de..966a5690c 100644
+--- a/src/video/winrt/SDL_winrtevents.cpp
++++ b/src/video/winrt/SDL_winrtevents.cpp
+@@ -26,8 +26,6 @@
+  * Windows includes:
+  */
+ #include <Windows.h>
+-using namespace Windows::UI::Core;
+-using Windows::UI::Core::CoreCursor;
+ 
+ /*
+  * SDL includes:
+diff --git a/src/video/winrt/SDL_winrtevents_c.h b/src/video/winrt/SDL_winrtevents_c.h
+index 2219190e8..3abf11a46 100644
+--- a/src/video/winrt/SDL_winrtevents_c.h
++++ b/src/video/winrt/SDL_winrtevents_c.h
+@@ -20,6 +20,8 @@
+ */
+ #include "SDL_internal.h"
+ 
++#include "../../core/winrt/SDL_winrt_cppwinrt.h"
++
+ extern "C" {
+ #include "../SDL_sysvideo.h"
+ }
+@@ -40,9 +42,9 @@ extern void WINRT_PumpEvents(SDL_VideoDevice *_this);
+ #endif
+ 
+ /*
+- * Internal-use, C++/CX functions:
++ * Internal-use, C++/WinRT functions:
+  */
+-#ifdef __cplusplus_winrt
++#ifdef __cplusplus
+ 
+ // Pointers (Mice, Touch, etc.)
+ typedef enum
+@@ -53,18 +55,18 @@ typedef enum
+ extern Windows::Foundation::Point WINRT_TransformCursorPosition(SDL_Window *window,
+                                                                 Windows::Foundation::Point rawPosition,
+                                                                 WINRT_CursorNormalizationType normalization);
+-extern bool WINRT_GetSDLButtonForPointerPoint(Windows::UI::Input::PointerPoint ^ pt, Uint8 *button, Uint8 *pressed);
+-extern void WINRT_ProcessPointerPressedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint);
+-extern void WINRT_ProcessPointerMovedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint);
+-extern void WINRT_ProcessPointerReleasedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint);
+-extern void WINRT_ProcessPointerEnteredEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint);
+-extern void WINRT_ProcessPointerExitedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint);
+-extern void WINRT_ProcessPointerWheelChangedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint);
+-extern void WINRT_ProcessMouseMovedEvent(SDL_Window *window, Windows::Devices::Input::MouseEventArgs ^ args);
++extern bool WINRT_GetSDLButtonForPointerPoint(Windows::UI::Input::PointerPoint const &pt, Uint8 *button, Uint8 *pressed);
++extern void WINRT_ProcessPointerPressedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint);
++extern void WINRT_ProcessPointerMovedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint);
++extern void WINRT_ProcessPointerReleasedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint);
++extern void WINRT_ProcessPointerEnteredEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint);
++extern void WINRT_ProcessPointerExitedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint);
++extern void WINRT_ProcessPointerWheelChangedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint);
++extern void WINRT_ProcessMouseMovedEvent(SDL_Window *window, Windows::Devices::Input::MouseEventArgs const &args);
+ 
+ // Keyboard
+-extern void WINRT_ProcessAcceleratorKeyActivated(Windows::UI::Core::AcceleratorKeyEventArgs ^ args);
+-extern void WINRT_ProcessCharacterReceivedEvent(SDL_Window *window, Windows::UI::Core::CharacterReceivedEventArgs ^ args);
++extern void WINRT_ProcessAcceleratorKeyActivated(Windows::UI::Core::AcceleratorKeyEventArgs const &args);
++extern void WINRT_ProcessCharacterReceivedEvent(SDL_Window *window, Windows::UI::Core::CharacterReceivedEventArgs const &args);
+ 
+ #if NTDDI_VERSION >= NTDDI_WIN10
+ extern void WINTRT_InitialiseInputPaneEvents(SDL_VideoDevice *_this);
+@@ -77,4 +79,4 @@ extern bool WINRT_IsScreenKeyboardShown(SDL_VideoDevice *_this, SDL_Window *wind
+ // XAML Thread Management
+ extern void WINRT_CycleXAMLThread(void);
+ 
+-#endif // ifdef __cplusplus_winrt
++#endif // ifdef __cplusplus
+diff --git a/src/video/winrt/SDL_winrtgamebar.cpp b/src/video/winrt/SDL_winrtgamebar.cpp
+index 2a6155e23..406a778ff 100644
+--- a/src/video/winrt/SDL_winrtgamebar.cpp
++++ b/src/video/winrt/SDL_winrtgamebar.cpp
+@@ -22,164 +22,22 @@
+ 
+ #ifdef SDL_VIDEO_DRIVER_WINRT
+ 
+-// Windows includes
+-#include <roapi.h>
+-#include <windows.foundation.h>
+-#include <windows.system.h>
++/* The Game Bar hooks (pausing input while the Game Bar redirects it) were
++   written against C++/CX-only internal interfaces. They are not needed to
++   run, so this C++/WinRT build leaves them out. */
+ 
+-// SDL includes
+ extern "C" {
+ #include "../SDL_sysvideo.h"
+ }
+-#include "SDL_winrtvideo_cpp.h"
+ 
+-/* Game Bar events can come in off the main thread.  Use the following
+-   WinRT CoreDispatcher to deal with them on SDL's thread.
+-*/
+-static Platform::WeakReference WINRT_MainThreadDispatcher;
+-
+-/* Win10's initial SDK (the 10.0.10240.0 release) does not include references
+-   to Game Bar APIs, as the Game Bar was released via Win10 10.0.10586.0.
+-
+-   Declare its WinRT/COM interface here, to allow compilation with earlier
+-   Windows SDKs.
+-*/
+-MIDL_INTERFACE("1DB9A292-CC78-4173-BE45-B61E67283EA7")
+-IGameBarStatics_ : public IInspectable
+-{
+-  public:
+-    virtual HRESULT STDMETHODCALLTYPE add_VisibilityChanged(
+-        __FIEventHandler_1_IInspectable * handler,
+-        Windows::Foundation::EventRegistrationToken * token) = 0;
+-
+-    virtual HRESULT STDMETHODCALLTYPE remove_VisibilityChanged(
+-        Windows::Foundation::EventRegistrationToken token) = 0;
+-
+-    virtual HRESULT STDMETHODCALLTYPE add_IsInputRedirectedChanged(
+-        __FIEventHandler_1_IInspectable * handler,
+-        Windows::Foundation::EventRegistrationToken * token) = 0;
+-
+-    virtual HRESULT STDMETHODCALLTYPE remove_IsInputRedirectedChanged(
+-        Windows::Foundation::EventRegistrationToken token) = 0;
+-
+-    virtual HRESULT STDMETHODCALLTYPE get_Visible(
+-        boolean * value) = 0;
+-
+-    virtual HRESULT STDMETHODCALLTYPE get_IsInputRedirected(
+-        boolean * value) = 0;
+-};
+-
+-// Declare the game bar's COM GUID
+-static GUID IID_IGameBarStatics_ = { MAKELONG(0xA292, 0x1DB9), 0xCC78, 0x4173, { 0xBE, 0x45, 0xB6, 0x1E, 0x67, 0x28, 0x3E, 0xA7 } };
+-
+-/* Retrieves a pointer to the game bar, or NULL if it is not available.
+-   If a pointer is returned, it's ->Release() method must be called
+-   after the caller has finished using it.
+-*/
+-static IGameBarStatics_ *WINRT_GetGameBar()
+-{
+-    const wchar_t *wClassName = L"Windows.Gaming.UI.GameBar";
+-    HSTRING hClassName;
+-    IActivationFactory *pActivationFactory = NULL;
+-    IGameBarStatics_ *pGameBar = NULL;
+-    HRESULT hr;
+-
+-    hr = ::WindowsCreateString(wClassName, (UINT32)SDL_wcslen(wClassName), &hClassName);
+-    if (FAILED(hr)) {
+-        goto done;
+-    }
+-
+-    hr = Windows::Foundation::GetActivationFactory(hClassName, &pActivationFactory);
+-    if (FAILED(hr)) {
+-        goto done;
+-    }
+-
+-    pActivationFactory->QueryInterface(IID_IGameBarStatics_, (void **)&pGameBar);
+-
+-done:
+-    if (pActivationFactory) {
+-        pActivationFactory->Release();
+-    }
+-    if (hClassName) {
+-        ::WindowsDeleteString(hClassName);
+-    }
+-    return pGameBar;
+-}
+-
+-static void WINRT_HandleGameBarIsInputRedirected_MainThread()
+-{
+-    IGameBarStatics_ *gameBar;
+-    boolean isInputRedirected = 0;
+-    if (!WINRT_MainThreadDispatcher) {
+-        // The game bar event handler has been deregistered!
+-        return;
+-    }
+-    gameBar = WINRT_GetGameBar();
+-    if (!gameBar) {
+-        // Shouldn't happen, but just in case...
+-        return;
+-    }
+-    if (SUCCEEDED(gameBar->get_IsInputRedirected(&isInputRedirected))) {
+-        if (!isInputRedirected) {
+-            /* Input-control is now back to the SDL app. Restore the cursor,
+-               in case Windows does not (it does not in either Win10
+-               10.0.10240.0 or 10.0.10586.0, maybe later version(s) too.
+-            */
+-            SDL_Cursor *cursor = SDL_GetCursor();
+-            SDL_SetCursor(cursor);
+-        }
+-    }
+-    gameBar->Release();
+-}
+-
+-static void WINRT_HandleGameBarIsInputRedirected_NonMainThread(Platform::Object ^ o1, Platform::Object ^ o2)
+-{
+-    Windows::UI::Core::CoreDispatcher ^ dispatcher = WINRT_MainThreadDispatcher.Resolve<Windows::UI::Core::CoreDispatcher>();
+-    if (dispatcher) {
+-        dispatcher->RunAsync(
+-            Windows::UI::Core::CoreDispatcherPriority::Normal,
+-            ref new Windows::UI::Core::DispatchedHandler(&WINRT_HandleGameBarIsInputRedirected_MainThread));
+-    }
+-}
++#include "SDL_winrtgamebar_cpp.h"
+ 
+ void WINRT_InitGameBar(SDL_VideoDevice *_this)
+ {
+-    SDL_VideoData *data = _this->internal;
+-    IGameBarStatics_ *gameBar = WINRT_GetGameBar();
+-    if (gameBar) {
+-        /* GameBar.IsInputRedirected events can come in via something other than
+-           the main/SDL thread.
+-
+-           Get a WinRT 'CoreDispatcher' that can be used to call back into the
+-           SDL thread.
+-        */
+-        WINRT_MainThreadDispatcher = Windows::UI::Core::CoreWindow::GetForCurrentThread()->Dispatcher;
+-        Windows::Foundation::EventHandler<Platform::Object ^> ^ handler =
+-            ref new Windows::Foundation::EventHandler<Platform::Object ^>(&WINRT_HandleGameBarIsInputRedirected_NonMainThread);
+-        __FIEventHandler_1_IInspectable *pHandler = reinterpret_cast<__FIEventHandler_1_IInspectable *>(handler);
+-        gameBar->add_IsInputRedirectedChanged(pHandler, &data->gameBarIsInputRedirectedToken);
+-        gameBar->Release();
+-    }
+ }
+ 
+ void WINRT_QuitGameBar(SDL_VideoDevice *_this)
+ {
+-    SDL_VideoData *data;
+-    IGameBarStatics_ *gameBar;
+-    if (!_this || !_this->internal) {
+-        return;
+-    }
+-    gameBar = WINRT_GetGameBar();
+-    if (!gameBar) {
+-        return;
+-    }
+-    data = _this->internal;
+-    if (data->gameBarIsInputRedirectedToken.Value) {
+-        gameBar->remove_IsInputRedirectedChanged(data->gameBarIsInputRedirectedToken);
+-        data->gameBarIsInputRedirectedToken.Value = 0;
+-    }
+-    WINRT_MainThreadDispatcher = nullptr;
+-    gameBar->Release();
+ }
+ 
+ #endif // SDL_VIDEO_DRIVER_WINRT
+diff --git a/src/video/winrt/SDL_winrtkeyboard.cpp b/src/video/winrt/SDL_winrtkeyboard.cpp
+index 9b86020ce..be2c73143 100644
+--- a/src/video/winrt/SDL_winrtkeyboard.cpp
++++ b/src/video/winrt/SDL_winrtkeyboard.cpp
+@@ -24,7 +24,7 @@
+ 
+ // Windows-specific includes
+ #include <Windows.h>
+-#include <agile.h>
++#include "../../core/winrt/SDL_winrt_cppwinrt.h"
+ 
+ // SDL-specific includes
+ #include "SDL_winrtevents_c.h"
+@@ -41,7 +41,7 @@ static SDL_Scancode WINRT_TranslateKeycode(Windows::System::VirtualKey virtualKe
+ {
+     SDL_Scancode code;
+     Uint8 index;
+-    Uint16 scanCode = keyStatus.ScanCode | (keyStatus.IsExtendedKey ? 0xe000 : 0);
++    Uint16 scanCode = (Uint16)(keyStatus.ScanCode | (keyStatus.IsExtendedKey ? 0xe000 : 0));
+ 
+     /* Pause/Break key have a special scan code with 0xe1 prefix
+      * that is not properly reported under UWP.
+@@ -58,32 +58,32 @@ static SDL_Scancode WINRT_TranslateKeycode(Windows::System::VirtualKey virtualKe
+     return code;
+ }
+ 
+-void WINRT_ProcessAcceleratorKeyActivated(Windows::UI::Core::AcceleratorKeyEventArgs ^ args)
++void WINRT_ProcessAcceleratorKeyActivated(Windows::UI::Core::AcceleratorKeyEventArgs const &args)
+ {
+     using namespace Windows::UI::Core;
+ 
+-    Uint8 state;
++    bool down;
+     SDL_Scancode code;
+     Uint16 rawcode = 0;
+ 
+-    switch (args->EventType) {
++    switch (args.EventType()) {
+     case CoreAcceleratorKeyEventType::SystemKeyDown:
+     case CoreAcceleratorKeyEventType::KeyDown:
+-        state = 0;
++        down = true;
+         break;
+     case CoreAcceleratorKeyEventType::SystemKeyUp:
+     case CoreAcceleratorKeyEventType::KeyUp:
+-        state = 1;
++        down = false;
+         break;
+     default:
+         return;
+     }
+ 
+-    code = WINRT_TranslateKeycode(args->VirtualKey, args->KeyStatus, &rawcode);
+-    SDL_SendKeyboardKey(0, SDL_DEFAULT_KEYBOARD_ID, rawcode, code, state);
++    code = WINRT_TranslateKeycode(args.VirtualKey(), args.KeyStatus(), &rawcode);
++    SDL_SendKeyboardKey(0, SDL_DEFAULT_KEYBOARD_ID, rawcode, code, down);
+ }
+ 
+-void WINRT_ProcessCharacterReceivedEvent(SDL_Window *window, Windows::UI::Core::CharacterReceivedEventArgs ^ args)
++void WINRT_ProcessCharacterReceivedEvent(SDL_Window *window, Windows::UI::Core::CharacterReceivedEventArgs const &args)
+ {
+     if (!window) {
+         return;
+@@ -91,16 +91,18 @@ void WINRT_ProcessCharacterReceivedEvent(SDL_Window *window, Windows::UI::Core::
+ 
+     SDL_WindowData *data = window->internal;
+ 
++    const UINT32 keyCode = args.KeyCode();
++
+     if (SDL_TextInputActive(window)) {
+         /* Characters outside Unicode Basic Multilingual Plane (BMP)
+          * are coded as so called "surrogate pair" in two separate UTF-16 character events.
+          * Cache high surrogate until next character event. */
+-        if (IS_HIGH_SURROGATE(args->KeyCode)) {
+-            data->high_surrogate = (WCHAR)args->KeyCode;
++        if (IS_HIGH_SURROGATE(keyCode)) {
++            data->high_surrogate = (WCHAR)keyCode;
+         } else {
+             WCHAR utf16[] = {
+-                data->high_surrogate ? data->high_surrogate : (WCHAR)args->KeyCode,
+-                data->high_surrogate ? (WCHAR)args->KeyCode : L'\0',
++                data->high_surrogate ? data->high_surrogate : (WCHAR)keyCode,
++                data->high_surrogate ? (WCHAR)keyCode : L'\0',
+                 L'\0'
+             };
+ 
+@@ -122,13 +124,13 @@ void WINRT_ProcessCharacterReceivedEvent(SDL_Window *window, Windows::UI::Core::
+ 
+ static bool WINRT_InputPaneVisible = false;
+ 
+-void WINTRT_OnInputPaneShowing(Windows::UI::ViewManagement::InputPane ^ sender, Windows::UI::ViewManagement::InputPaneVisibilityEventArgs ^ args)
++static void WINTRT_OnInputPaneShowing(Windows::UI::ViewManagement::InputPane const &, Windows::UI::ViewManagement::InputPaneVisibilityEventArgs const &)
+ {
+     WINRT_InputPaneVisible = true;
+     SDL_SendScreenKeyboardShown();
+ }
+ 
+-void WINTRT_OnInputPaneHiding(Windows::UI::ViewManagement::InputPane ^ sender, Windows::UI::ViewManagement::InputPaneVisibilityEventArgs ^ args)
++static void WINTRT_OnInputPaneHiding(Windows::UI::ViewManagement::InputPane const &, Windows::UI::ViewManagement::InputPaneVisibilityEventArgs const &)
+ {
+     WINRT_InputPaneVisible = false;
+     SDL_SendScreenKeyboardHidden();
+@@ -137,12 +139,10 @@ void WINTRT_OnInputPaneHiding(Windows::UI::ViewManagement::InputPane ^ sender, W
+ void WINTRT_InitialiseInputPaneEvents(SDL_VideoDevice *_this)
+ {
+     using namespace Windows::UI::ViewManagement;
+-    InputPane ^ inputPane = InputPane::GetForCurrentView();
++    InputPane inputPane = InputPane::GetForCurrentView();
+     if (inputPane) {
+-        inputPane->Showing += ref new Windows::Foundation::TypedEventHandler<Windows::UI::ViewManagement::InputPane ^,
+-                                                                             Windows::UI::ViewManagement::InputPaneVisibilityEventArgs ^>(&WINTRT_OnInputPaneShowing);
+-        inputPane->Hiding += ref new Windows::Foundation::TypedEventHandler<Windows::UI::ViewManagement::InputPane ^,
+-                                                                            Windows::UI::ViewManagement::InputPaneVisibilityEventArgs ^>(&WINTRT_OnInputPaneHiding);
++        inputPane.Showing(&WINTRT_OnInputPaneShowing);
++        inputPane.Hiding(&WINTRT_OnInputPaneHiding);
+     }
+ }
+ 
+@@ -154,25 +154,25 @@ bool WINRT_HasScreenKeyboardSupport(SDL_VideoDevice *_this)
+ void WINRT_ShowScreenKeyboard(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID props)
+ {
+     using namespace Windows::UI::ViewManagement;
+-    InputPane ^ inputPane = InputPane::GetForCurrentView();
++    InputPane inputPane = InputPane::GetForCurrentView();
+     if (inputPane) {
+-        inputPane->TryShow();
++        inputPane.TryShow();
+     }
+ }
+ 
+ void WINRT_HideScreenKeyboard(SDL_VideoDevice *_this, SDL_Window *window)
+ {
+     using namespace Windows::UI::ViewManagement;
+-    InputPane ^ inputPane = InputPane::GetForCurrentView();
++    InputPane inputPane = InputPane::GetForCurrentView();
+     if (inputPane) {
+-        inputPane->TryHide();
++        inputPane.TryHide();
+     }
+ }
+ 
+ bool WINRT_IsScreenKeyboardShown(SDL_VideoDevice *_this, SDL_Window *window)
+ {
+     using namespace Windows::UI::ViewManagement;
+-    InputPane ^ inputPane = InputPane::GetForCurrentView();
++    InputPane inputPane = InputPane::GetForCurrentView();
+     if (inputPane) {
+         switch (SDL_GetWinRTDeviceFamily()) {
+         case SDL_WINRT_DEVICEFAMILY_XBOX:
+@@ -187,7 +187,7 @@ bool WINRT_IsScreenKeyboardShown(SDL_VideoDevice *_this, SDL_Window *window)
+         default:
+             // OccludedRect is recommend on universal apps per docs
+             // https://learn.microsoft.com/en-us/uwp/api/windows.ui.viewmanagement.inputpane.visible?view=winrt-22621
+-            Windows::Foundation::Rect rect = inputPane->OccludedRect;
++            Windows::Foundation::Rect rect = inputPane.OccludedRect();
+             if (rect.Width > 0 && rect.Height > 0) {
+                 return true;
+             }
+diff --git a/src/video/winrt/SDL_winrtmessagebox.cpp b/src/video/winrt/SDL_winrtmessagebox.cpp
+index 59c025c45..750c618cf 100644
+--- a/src/video/winrt/SDL_winrtmessagebox.cpp
++++ b/src/video/winrt/SDL_winrtmessagebox.cpp
+@@ -28,14 +28,13 @@ extern "C" {
+ 
+ #include "SDL_winrtevents_c.h"
+ 
+-#include <windows.ui.popups.h>
+-using namespace Platform;
+ using namespace Windows::Foundation;
+ using namespace Windows::UI::Popups;
+ 
+-static String ^ WINRT_UTF8ToPlatformString(const char *str) {
++static winrt::hstring WINRT_UTF8ToHString(const char *str)
++{
+     wchar_t *wstr = WIN_UTF8ToStringW(str);
+-    String ^ rtstr = ref new String(wstr);
++    winrt::hstring rtstr(wstr ? wstr : L"");
+     SDL_free(wstr);
+     return rtstr;
+ }
+@@ -43,34 +42,17 @@ static String ^ WINRT_UTF8ToPlatformString(const char *str) {
+ extern "C"
+ bool WINRT_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonID)
+ {
+-#if SDL_WINAPI_FAMILY_PHONE && NTDDI_VERSION == NTDDI_WIN8
+-    /* Sadly, Windows Phone 8 doesn't include the MessageDialog class that
+-     * Windows 8.x/RT does, even though MSDN's reference documentation for
+-     * Windows Phone 8 mentions it.
+-     *
+-     * The .NET runtime on Windows Phone 8 does, however, include a
+-     * MessageBox class.  Perhaps this could be called, somehow?
+-     */
+-    return SDL_SetError("SDL_messagebox support is not available for Windows Phone 8.0");
+-#else
+     SDL_VideoDevice *_this = SDL_GetVideoDevice();
+-
+-#if SDL_WINAPI_FAMILY_PHONE
+-    const int maxbuttons = 2;
+-    const char *platform = "Windows Phone 8.1+";
+-#else
+     const int maxbuttons = 3;
+-    const char *platform = "Windows 8.x";
+-#endif
+ 
+     if (messageboxdata->numbuttons > maxbuttons) {
+-        return SDL_SetError("WinRT's MessageDialog only supports %d buttons, at most, on %s. %d were requested.",
+-                            maxbuttons, platform, messageboxdata->numbuttons);
++        return SDL_SetError("WinRT's MessageDialog only supports %d buttons, at most. %d were requested.",
++                            maxbuttons, messageboxdata->numbuttons);
+     }
+ 
+     // Build a MessageDialog object and its buttons
+-    MessageDialog ^ dialog = ref new MessageDialog(WINRT_UTF8ToPlatformString(messageboxdata->message));
+-    dialog->Title = WINRT_UTF8ToPlatformString(messageboxdata->title);
++    MessageDialog dialog(WINRT_UTF8ToHString(messageboxdata->message));
++    dialog.Title(WINRT_UTF8ToHString(messageboxdata->title));
+     for (int i = 0; i < messageboxdata->numbuttons; ++i) {
+         const SDL_MessageBoxButtonData *sdlButton;
+         if (messageboxdata->flags & SDL_MESSAGEBOX_BUTTONS_RIGHT_TO_LEFT) {
+@@ -78,35 +60,34 @@ bool WINRT_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonI
+         } else {
+             sdlButton = &messageboxdata->buttons[i];
+         }
+-        UICommand ^ button = ref new UICommand(WINRT_UTF8ToPlatformString(sdlButton->text));
+-        button->Id = IntPtr((int)((size_t)(sdlButton - messageboxdata->buttons)));
+-        dialog->Commands->Append(button);
++        UICommand button(WINRT_UTF8ToHString(sdlButton->text));
++        button.Id(winrt::box_value((int)(sdlButton - messageboxdata->buttons)));
++        dialog.Commands().Append(button);
+         if (sdlButton->flags & SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT) {
+-            dialog->CancelCommandIndex = i;
++            dialog.CancelCommandIndex(i);
+         }
+         if (sdlButton->flags & SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT) {
+-            dialog->DefaultCommandIndex = i;
++            dialog.DefaultCommandIndex(i);
+         }
+     }
+ 
+-    // Display the MessageDialog, then wait for it to be closed
++    // Display the MessageDialog, then wait for it to be closed. This runs on
++    // the UI thread, so it pumps events rather than blocking on the operation.
+     // TODO, WinRT: Find a way to redraw MessageDialog instances if a GPU device-reset occurs during the following event-loop
+-    auto operation = dialog->ShowAsync();
+-    while (operation->Status == Windows::Foundation::AsyncStatus::Started) {
++    auto operation = dialog.ShowAsync();
++    while (operation.Status() == AsyncStatus::Started) {
+         WINRT_PumpEvents(_this);
+     }
+ 
+     // Retrieve results from the MessageDialog and process them accordingly
+-    if (operation->Status != Windows::Foundation::AsyncStatus::Completed) {
++    if (operation.Status() != AsyncStatus::Completed) {
+         return SDL_SetError("An unknown error occurred in displaying the WinRT MessageDialog");
+     }
+     if (buttonID) {
+-        IntPtr results = safe_cast<IntPtr>(operation->GetResults()->Id);
+-        int clicked_index = results.ToInt32();
++        const int clicked_index = winrt::unbox_value<int>(operation.GetResults().Id());
+         *buttonID = messageboxdata->buttons[clicked_index].buttonID;
+     }
+     return true;
+-#endif // if SDL_WINAPI_FAMILY_PHONE / else
+ }
+ 
+ #endif // SDL_VIDEO_DRIVER_WINRT
+diff --git a/src/video/winrt/SDL_winrtmouse.cpp b/src/video/winrt/SDL_winrtmouse.cpp
+index a6e5adda4..30c9ad369 100644
+--- a/src/video/winrt/SDL_winrtmouse.cpp
++++ b/src/video/winrt/SDL_winrtmouse.cpp
+@@ -26,9 +26,8 @@
+  * Windows includes:
+  */
+ #include <Windows.h>
+-#include <windows.ui.core.h>
++#include "../../core/winrt/SDL_winrt_cppwinrt.h"
+ using namespace Windows::UI::Core;
+-using Windows::UI::Core::CoreCursor;
+ 
+ /*
+  * SDL includes:
+@@ -118,14 +117,8 @@ static SDL_Cursor *WINRT_CreateSystemCursor(SDL_SystemCursor id)
+ 
+     cursor = (SDL_Cursor *)SDL_calloc(1, sizeof(*cursor));
+     if (cursor) {
+-        /* Create a pointer to a COM reference to a cursor.  The extra
+-           pointer is used (on top of the COM reference) to allow the cursor
+-           to be referenced by the SDL_cursor's internal field, which is
+-           a void pointer.
+-        */
+-        CoreCursor ^ *theCursor = new CoreCursor ^ (nullptr);
+-        *theCursor = ref new CoreCursor(cursorType, 0);
+-        cursor->internal = (SDL_CursorData *)theCursor;
++        // The cursor's internal field owns one COM reference to the CoreCursor.
++        cursor->internal = (SDL_CursorData *)winrt::detach_abi(CoreCursor(cursorType, 0));
+     }
+ 
+     return cursor;
+@@ -139,9 +132,8 @@ static SDL_Cursor *WINRT_CreateDefaultCursor()
+ static void WINRT_FreeCursor(SDL_Cursor *cursor)
+ {
+     if (cursor->internal) {
+-        CoreCursor ^ *theCursor = (CoreCursor ^ *)cursor->internal;
+-        *theCursor = nullptr; // Release the COM reference to the CoreCursor
+-        delete theCursor;     // Delete the pointer to the COM reference
++        CoreCursor theCursor{ nullptr };
++        winrt::attach_abi(theCursor, cursor->internal); // Released when theCursor goes out of scope
+     }
+     SDL_free(cursor);
+ }
+@@ -153,10 +145,11 @@ static bool WINRT_ShowCursor(SDL_Cursor *cursor)
+         return true;
+     }
+ 
+-    CoreWindow ^ coreWindow = CoreWindow::GetForCurrentThread();
++    CoreWindow coreWindow = CoreWindow::GetForCurrentThread();
+     if (cursor) {
+-        CoreCursor ^ *theCursor = (CoreCursor ^ *)cursor->internal;
+-        coreWindow->PointerCursor = *theCursor;
++        CoreCursor theCursor{ nullptr };
++        winrt::copy_from_abi(theCursor, cursor->internal);
++        coreWindow.PointerCursor(theCursor);
+     } else {
+         // HACK ALERT: TL;DR - Hiding the cursor in WinRT/UWP apps is weird, and
+         //   a Win32-style cursor resource file must be directly included in apps,
+@@ -203,18 +196,14 @@ static bool WINRT_ShowCursor(SDL_Cursor *cursor)
+         //
+ 
+         const unsigned int win32CursorResourceID = 5000;
+-        CoreCursor ^ blankCursor = ref new CoreCursor(CoreCursorType::Custom, win32CursorResourceID);
+-
+-        // Set 'PointerCursor' to 'blankCursor' in a way that shouldn't throw
+-        // an exception if the app hasn't loaded that resource.
+-        ABI::Windows::UI::Core::ICoreCursor *iblankCursor = reinterpret_cast<ABI::Windows::UI::Core::ICoreCursor *>(blankCursor);
+-        ABI::Windows::UI::Core::ICoreWindow *icoreWindow = reinterpret_cast<ABI::Windows::UI::Core::ICoreWindow *>(coreWindow);
+-        HRESULT hr = icoreWindow->put_PointerCursor(iblankCursor);
+-        if (FAILED(hr)) {
++
++        try {
++            coreWindow.PointerCursor(CoreCursor(CoreCursorType::Custom, win32CursorResourceID));
++        } catch (winrt::hresult_error const &) {
+             // The app doesn't contain the cursor resource, or some other error
+             // occurred.  Just use the other, but mouse-motion-preventing, means of
+             // hiding the cursor.
+-            coreWindow->PointerCursor = nullptr;
++            coreWindow.PointerCursor(nullptr);
+         }
+     }
+     return true;
+@@ -236,7 +225,6 @@ void WINRT_InitMouse(SDL_VideoDevice *_this)
+         - programmatically moveable cursors
+     */
+ 
+-#if !SDL_WINAPI_FAMILY_PHONE
+     // mouse->CreateCursor = WINRT_CreateCursor;
+     mouse->CreateSystemCursor = WINRT_CreateSystemCursor;
+     mouse->ShowCursor = WINRT_ShowCursor;
+@@ -245,7 +233,6 @@ void WINRT_InitMouse(SDL_VideoDevice *_this)
+     mouse->SetRelativeMouseMode = WINRT_SetRelativeMouseMode;
+ 
+     SDL_SetDefaultCursor(WINRT_CreateDefaultCursor());
+-#endif
+ }
+ 
+ void WINRT_QuitMouse(SDL_VideoDevice *_this)
+diff --git a/src/video/winrt/SDL_winrtpointerinput.cpp b/src/video/winrt/SDL_winrtpointerinput.cpp
+index d48c4c481..585798547 100644
+--- a/src/video/winrt/SDL_winrtpointerinput.cpp
++++ b/src/video/winrt/SDL_winrtpointerinput.cpp
+@@ -71,89 +71,64 @@ WINRT_TransformCursorPosition(SDL_Window *window,
+     // The CoreWindow can only be accessed on certain thread(s).
+     SDL_assert(CoreWindow::GetForCurrentThread() != nullptr);
+ 
+-    CoreWindow ^ nativeWindow = windowData->coreWindow.Get();
++    CoreWindow nativeWindow = windowData->coreWindow;
++    const Windows::Foundation::Rect bounds = nativeWindow.Bounds();
+     Windows::Foundation::Point outputPosition;
+ 
+     // Compute coordinates normalized from 0..1.
+     // If the coordinates need to be sized to the SDL window,
+     // we'll do that after.
+-#if !SDL_WINAPI_FAMILY_PHONE || NTDDI_VERSION > NTDDI_WIN8
+-    outputPosition.X = rawPosition.X / nativeWindow->Bounds.Width;
+-    outputPosition.Y = rawPosition.Y / nativeWindow->Bounds.Height;
+-#else
+-    switch (WINRT_DISPLAY_PROPERTY(CurrentOrientation)) {
+-    case DisplayOrientations::Portrait:
+-        outputPosition.X = rawPosition.X / nativeWindow->Bounds.Width;
+-        outputPosition.Y = rawPosition.Y / nativeWindow->Bounds.Height;
+-        break;
+-    case DisplayOrientations::PortraitFlipped:
+-        outputPosition.X = 1.0f - (rawPosition.X / nativeWindow->Bounds.Width);
+-        outputPosition.Y = 1.0f - (rawPosition.Y / nativeWindow->Bounds.Height);
+-        break;
+-    case DisplayOrientations::Landscape:
+-        outputPosition.X = rawPosition.Y / nativeWindow->Bounds.Height;
+-        outputPosition.Y = 1.0f - (rawPosition.X / nativeWindow->Bounds.Width);
+-        break;
+-    case DisplayOrientations::LandscapeFlipped:
+-        outputPosition.X = 1.0f - (rawPosition.Y / nativeWindow->Bounds.Height);
+-        outputPosition.Y = rawPosition.X / nativeWindow->Bounds.Width;
+-        break;
+-    default:
+-        break;
+-    }
+-#endif
++    outputPosition.X = rawPosition.X / bounds.Width;
++    outputPosition.Y = rawPosition.Y / bounds.Height;
++
+ 
+     if (normalization == TransformToSDLWindowSize) {
+-        outputPosition.X *= ((float32)window->w);
+-        outputPosition.Y *= ((float32)window->h);
++        outputPosition.X *= ((float)window->w);
++        outputPosition.Y *= ((float)window->h);
+     }
+ 
+     return outputPosition;
+ }
+ 
+-bool WINRT_GetSDLButtonForPointerPoint(Windows::UI::Input::PointerPoint ^ pt, Uint8 *button, Uint8 *pressed)
++bool WINRT_GetSDLButtonForPointerPoint(Windows::UI::Input::PointerPoint const &pt, Uint8 *button, Uint8 *pressed)
+ {
+     using namespace Windows::UI::Input;
+ 
+-#if SDL_WINAPI_FAMILY_PHONE
+-    *button = SDL_BUTTON_LEFT;
+-    return true;
+-#else
+-    switch (pt->Properties->PointerUpdateKind) {
++    const PointerUpdateKind kind = pt.Properties().PointerUpdateKind();
++    switch (kind) {
+     case PointerUpdateKind::LeftButtonPressed:
+     case PointerUpdateKind::LeftButtonReleased:
+         *button = SDL_BUTTON_LEFT;
+-        *pressed = (pt->Properties->PointerUpdateKind == PointerUpdateKind::LeftButtonPressed);
++        *pressed = (kind == PointerUpdateKind::LeftButtonPressed);
+         return true;
+ 
+     case PointerUpdateKind::RightButtonPressed:
+     case PointerUpdateKind::RightButtonReleased:
+         *button = SDL_BUTTON_RIGHT;
+-        *pressed = (pt->Properties->PointerUpdateKind == PointerUpdateKind::RightButtonPressed);
++        *pressed = (kind == PointerUpdateKind::RightButtonPressed);
+         return true;
+ 
+     case PointerUpdateKind::MiddleButtonPressed:
+     case PointerUpdateKind::MiddleButtonReleased:
+         *button = SDL_BUTTON_MIDDLE;
+-        *pressed = (pt->Properties->PointerUpdateKind == PointerUpdateKind::MiddleButtonPressed);
++        *pressed = (kind == PointerUpdateKind::MiddleButtonPressed);
+         return true;
+ 
+     case PointerUpdateKind::XButton1Pressed:
+     case PointerUpdateKind::XButton1Released:
+         *button = SDL_BUTTON_X1;
+-        *pressed = (pt->Properties->PointerUpdateKind == PointerUpdateKind::XButton1Pressed);
++        *pressed = (kind == PointerUpdateKind::XButton1Pressed);
+         return true;
+ 
+     case PointerUpdateKind::XButton2Pressed:
+     case PointerUpdateKind::XButton2Released:
+         *button = SDL_BUTTON_X2;
+-        *pressed = (pt->Properties->PointerUpdateKind == PointerUpdateKind::XButton2Pressed);
++        *pressed = (kind == PointerUpdateKind::XButton2Pressed);
+         return true;
+ 
+     default:
+         break;
+     }
+-#endif
+ 
+     *button = 0;
+     *pressed = 0;
+@@ -194,23 +169,19 @@ bool WINRT_GetSDLButtonForPointerPoint(Windows::UI::Input::PointerPoint ^ pt, Ui
+ //     return "";
+ // }
+ 
+-static bool WINRT_IsTouchEvent(Windows::UI::Input::PointerPoint ^ pointerPoint)
++static bool WINRT_IsTouchEvent(Windows::UI::Input::PointerPoint const &pointerPoint)
+ {
+-#if SDL_WINAPI_FAMILY_PHONE
+-    return true;
+-#else
+     using namespace Windows::Devices::Input;
+-    switch (pointerPoint->PointerDevice->PointerDeviceType) {
++    switch (pointerPoint.PointerDevice().PointerDeviceType()) {
+     case PointerDeviceType::Touch:
+     case PointerDeviceType::Pen:
+         return true;
+     default:
+         return false;
+     }
+-#endif
+ }
+ 
+-void WINRT_ProcessPointerPressedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint)
++void WINRT_ProcessPointerPressedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint)
+ {
+     if (!window) {
+         return;
+@@ -220,51 +191,50 @@ void WINRT_ProcessPointerPressedEvent(SDL_Window *window, Windows::UI::Input::Po
+         Uint8 button, pressed;
+         WINRT_GetSDLButtonForPointerPoint(pointerPoint, &button, &pressed);
+         SDL_assert(pressed == 1);
+-        SDL_SendMouseButton(0, window, SDL_DEFAULT_MOUSE_ID, 0, button);
++        SDL_SendMouseButton(0, window, SDL_DEFAULT_MOUSE_ID, button, true);
+     } else {
+-        Windows::Foundation::Point normalizedPoint = WINRT_TransformCursorPosition(window, pointerPoint->Position, NormalizeZeroToOne);
+-        Windows::Foundation::Point windowPoint = WINRT_TransformCursorPosition(window, pointerPoint->Position, TransformToSDLWindowSize);
++        Windows::Foundation::Point normalizedPoint = WINRT_TransformCursorPosition(window, pointerPoint.Position(), NormalizeZeroToOne);
+ 
+         SDL_SendTouch(0,
+             WINRT_TouchID,
+-            (SDL_FingerID)(pointerPoint->PointerId + 1),
++            (SDL_FingerID)(pointerPoint.PointerId() + 1),
+             window,
+             SDL_EVENT_FINGER_DOWN,
+             normalizedPoint.X,
+             normalizedPoint.Y,
+-            pointerPoint->Properties->Pressure);
++            pointerPoint.Properties().Pressure());
+     }
+ }
+ 
+-void WINRT_ProcessPointerMovedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint)
++void WINRT_ProcessPointerMovedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint)
+ {
+     if (!window || WINRT_UsingRelativeMouseMode) {
+         return;
+     }
+ 
+-    Windows::Foundation::Point normalizedPoint = WINRT_TransformCursorPosition(window, pointerPoint->Position, NormalizeZeroToOne);
+-    Windows::Foundation::Point windowPoint = WINRT_TransformCursorPosition(window, pointerPoint->Position, TransformToSDLWindowSize);
++    Windows::Foundation::Point normalizedPoint = WINRT_TransformCursorPosition(window, pointerPoint.Position(), NormalizeZeroToOne);
++    Windows::Foundation::Point windowPoint = WINRT_TransformCursorPosition(window, pointerPoint.Position(), TransformToSDLWindowSize);
+ 
+     if (!WINRT_IsTouchEvent(pointerPoint)) {
+         // For some odd reason Moved events are used for multiple mouse buttons
+         Uint8 button, pressed;
+         if (WINRT_GetSDLButtonForPointerPoint(pointerPoint, &button, &pressed)) {
+-            SDL_SendMouseButton(0, window, SDL_DEFAULT_MOUSE_ID, pressed, button);
++            SDL_SendMouseButton(0, window, SDL_DEFAULT_MOUSE_ID, button, pressed != 0);
+         }
+ 
+         SDL_SendMouseMotion(0, window, SDL_DEFAULT_MOUSE_ID, false, windowPoint.X, windowPoint.Y);
+     } else {
+         SDL_SendTouchMotion(0,
+             WINRT_TouchID,
+-            (SDL_FingerID)(pointerPoint->PointerId + 1),
++            (SDL_FingerID)(pointerPoint.PointerId() + 1),
+             window,
+             normalizedPoint.X,
+             normalizedPoint.Y,
+-            pointerPoint->Properties->Pressure);
++            pointerPoint.Properties().Pressure());
+     }
+ }
+ 
+-void WINRT_ProcessPointerReleasedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint)
++void WINRT_ProcessPointerReleasedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint)
+ {
+     if (!window) {
+         return;
+@@ -274,22 +244,22 @@ void WINRT_ProcessPointerReleasedEvent(SDL_Window *window, Windows::UI::Input::P
+         Uint8 button, pressed;
+         WINRT_GetSDLButtonForPointerPoint(pointerPoint, &button, &pressed);
+         SDL_assert(pressed == 0);
+-        SDL_SendMouseButton(0, window, SDL_DEFAULT_MOUSE_ID, 1, button);
++        SDL_SendMouseButton(0, window, SDL_DEFAULT_MOUSE_ID, button, false);
+     } else {
+-        Windows::Foundation::Point normalizedPoint = WINRT_TransformCursorPosition(window, pointerPoint->Position, NormalizeZeroToOne);
++        Windows::Foundation::Point normalizedPoint = WINRT_TransformCursorPosition(window, pointerPoint.Position(), NormalizeZeroToOne);
+ 
+         SDL_SendTouch(0,
+             WINRT_TouchID,
+-            (SDL_FingerID)(pointerPoint->PointerId + 1),
++            (SDL_FingerID)(pointerPoint.PointerId() + 1),
+             window,
+             SDL_EVENT_FINGER_UP,
+             normalizedPoint.X,
+             normalizedPoint.Y,
+-            pointerPoint->Properties->Pressure);
++            pointerPoint.Properties().Pressure());
+     }
+ }
+ 
+-void WINRT_ProcessPointerEnteredEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint)
++void WINRT_ProcessPointerEnteredEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint)
+ {
+     if (!window) {
+         return;
+@@ -300,7 +270,7 @@ void WINRT_ProcessPointerEnteredEvent(SDL_Window *window, Windows::UI::Input::Po
+     }
+ }
+ 
+-void WINRT_ProcessPointerExitedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint)
++void WINRT_ProcessPointerExitedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint)
+ {
+     if (!window) {
+         return;
+@@ -311,17 +281,17 @@ void WINRT_ProcessPointerExitedEvent(SDL_Window *window, Windows::UI::Input::Poi
+     }
+ }
+ 
+-void WINRT_ProcessPointerWheelChangedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint ^ pointerPoint)
++void WINRT_ProcessPointerWheelChangedEvent(SDL_Window *window, Windows::UI::Input::PointerPoint const &pointerPoint)
+ {
+     if (!window) {
+         return;
+     }
+ 
+-    float motion = (float)pointerPoint->Properties->MouseWheelDelta / WHEEL_DELTA;
++    float motion = (float)pointerPoint.Properties().MouseWheelDelta() / WHEEL_DELTA;
+     SDL_SendMouseWheel(0, window, SDL_DEFAULT_MOUSE_ID, 0.0f, motion, SDL_MOUSEWHEEL_NORMAL);
+ }
+ 
+-void WINRT_ProcessMouseMovedEvent(SDL_Window *window, Windows::Devices::Input::MouseEventArgs ^ args)
++void WINRT_ProcessMouseMovedEvent(SDL_Window *window, Windows::Devices::Input::MouseEventArgs const &args)
+ {
+     if (!window || !WINRT_UsingRelativeMouseMode) {
+         return;
+@@ -381,7 +351,8 @@ void WINRT_ProcessMouseMovedEvent(SDL_Window *window, Windows::Devices::Input::M
+     // when this bug is active. A suitable transformation could then be made to
+     // OnMouseMoved's values.
+     //
+-    const Windows::Foundation::Point mouseDeltaInDIPs((float)args->MouseDelta.X, (float)args->MouseDelta.Y);
++    const Windows::Devices::Input::MouseDelta mouseDelta = args.MouseDelta();
++    const Windows::Foundation::Point mouseDeltaInDIPs((float)mouseDelta.X, (float)mouseDelta.Y);
+     const Windows::Foundation::Point mouseDeltaInSDLWindowCoords = WINRT_TransformCursorPosition(window, mouseDeltaInDIPs, TransformToSDLWindowSize);
+     SDL_SendMouseMotion(0, window, SDL_DEFAULT_MOUSE_ID, true, mouseDeltaInSDLWindowCoords.X, mouseDeltaInSDLWindowCoords.Y);
+ }
+diff --git a/src/video/winrt/SDL_winrtvideo.cpp b/src/video/winrt/SDL_winrtvideo.cpp
+index 5e832c9cb..e794d51f7 100644
+--- a/src/video/winrt/SDL_winrtvideo.cpp
++++ b/src/video/winrt/SDL_winrtvideo.cpp
+@@ -33,32 +33,24 @@
+ #include <string>
+ 
+ // Windows includes
+-#include <agile.h>
+ #include <dxgi.h>
+ #include <dxgi1_2.h>
+-#include <windows.graphics.display.h>
+-#include <windows.system.display.h>
+-#if defined(__has_include)
+-#if __has_include(<windows.graphics.display.core.h>)
+-#include <windows.graphics.display.core.h>
+-#define SDL_WINRT_HAVE_HDMI_DISPLAY_INFORMATION 1
+-#elif __has_include(<Windows.Graphics.Display.Core.h>)
+-#include <Windows.Graphics.Display.Core.h>
++#include "../../core/winrt/SDL_winrt_cppwinrt.h"
++#include <winrt/Windows.System.Display.h>
++// HdmiDisplayInformation comes from the Windows.Graphics.Display.Core projection.
+ #define SDL_WINRT_HAVE_HDMI_DISPLAY_INFORMATION 1
+-#endif
++#if defined(__has_include)
+ #if __has_include(<gamingdeviceinformation.h>)
+ #include <gamingdeviceinformation.h>
+ #define SDL_WINRT_HAVE_GAMING_DEVICE_INFORMATION 1
+ #endif
+ #endif
+ using namespace Windows::ApplicationModel::Core;
+-using namespace Windows::Foundation;
+ using namespace Windows::Graphics::Display;
+ using namespace Windows::UI::Core;
+ using namespace Windows::UI::ViewManagement;
+ 
+ // [re]declare Windows GUIDs locally, to limit the amount of external lib(s) SDL has to link to
+-static const GUID SDL_IID_IDisplayRequest = { 0xe5732044, 0xf49f, 0x4b60, { 0x8d, 0xd4, 0x5e, 0x7e, 0x3a, 0x63, 0x2a, 0xc0 } };
+ static const GUID SDL_IID_IDXGIFactory2 = { 0x50c83a1c, 0xe072, 0x4c48, { 0x87, 0xb0, 0x36, 0x30, 0xfa, 0x36, 0xa6, 0xd0 } };
+ 
+ // SDL includes
+@@ -95,7 +87,7 @@ static SDL_FullscreenResult WINRT_SetWindowFullscreen(SDL_VideoDevice *_this, SD
+ static void WINRT_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window);
+ 
+ // Misc functions
+-static ABI::Windows::System::Display::IDisplayRequest *WINRT_CreateDisplayRequest(SDL_VideoDevice *_this);
++static IUnknown *WINRT_CreateDisplayRequest(SDL_VideoDevice *_this);
+ static void WINRT_GetWindowSizeInPixels(SDL_VideoDevice *_this, SDL_Window *window, int *w, int *h);
+ extern bool WINRT_SuspendScreenSaver(SDL_VideoDevice *_this);
+ 
+@@ -202,13 +194,13 @@ static void WINRT_ResolveOutputSize(void)
+ 
+ #if defined(SDL_WINRT_HAVE_HDMI_DISPLAY_INFORMATION)
+     try {
+-        Windows::Graphics::Display::Core::HdmiDisplayInformation ^ hdi =
++        Windows::Graphics::Display::Core::HdmiDisplayInformation hdi =
+             Windows::Graphics::Display::Core::HdmiDisplayInformation::GetForCurrentView();
+-        if (hdi != nullptr) {
+-            Windows::Graphics::Display::Core::HdmiDisplayMode ^ mode = hdi->GetCurrentDisplayMode();
+-            if (mode != nullptr) {
+-                display_w = (Uint32)mode->ResolutionWidthInRawPixels;
+-                display_h = (Uint32)mode->ResolutionHeightInRawPixels;
++        if (hdi) {
++            Windows::Graphics::Display::Core::HdmiDisplayMode mode = hdi.GetCurrentDisplayMode();
++            if (mode) {
++                display_w = (Uint32)mode.ResolutionWidthInRawPixels();
++                display_h = (Uint32)mode.ResolutionHeightInRawPixels();
+             }
+         }
+     } catch (...) {
+@@ -458,7 +450,7 @@ static void SDLCALL WINRT_SetDisplayOrientationsPreference(void *userdata, const
+     // for details.  Microsoft's "Display orientation sample" also gives an
+     // outline of how Windows treats device rotation
+     // (http://code.msdn.microsoft.com/Display-Orientation-Sample-19a58e93).
+-    WINRT_DISPLAY_PROPERTY(AutoRotationPreferences) = (DisplayOrientations)orientationFlags;
++    DisplayInformation::AutoRotationPreferences((DisplayOrientations)orientationFlags);
+ }
+ 
+ bool WINRT_VideoInit(SDL_VideoDevice *_this)
+@@ -505,7 +497,7 @@ SDL_PixelFormat D3D11_DXGIFormatToSDLPixelFormat(DXGI_FORMAT dxgiFormat)
+     }
+ }
+ #else
+-extern "C" Uint32 D3D11_DXGIFormatToSDLPixelFormat(DXGI_FORMAT dxgiFormat);
++extern "C" SDL_PixelFormat D3D11_DXGIFormatToSDLPixelFormat(DXGI_FORMAT dxgiFormat);
+ #endif
+ 
+ static void WINRT_DXGIModeToSDLDisplayMode(const DXGI_MODE_DESC *dxgiMode, SDL_DisplayMode *sdlMode)
+@@ -659,10 +651,7 @@ static bool WINRT_AddDisplaysForAdapter(SDL_VideoDevice *_this, IDXGIFactory2 *d
+             if (adapterIndex == 0 && outputIndex == 0) {
+                 SDL_VideoDisplay display;
+                 SDL_DisplayMode mode;
+-#if SDL_WINRT_USE_APPLICATIONVIEW
+-                ApplicationView ^ appView = ApplicationView::GetForCurrentView();
+-#endif
+-                CoreWindow ^ coreWin = CoreWindow::GetForCurrentThread();
++                ApplicationView appView = ApplicationView::GetForCurrentView();
+                 SDL_zero(display);
+                 SDL_zero(mode);
+                 display.name = SDL_strdup("DXGI Display-detection Workaround");
+@@ -674,16 +663,8 @@ static bool WINRT_AddDisplaysForAdapter(SDL_VideoDevice *_this, IDXGIFactory2 *d
+                    failing test), whereas CoreWindow might not.  -- DavidL
+                 */
+ 
+-#if (NTDDI_VERSION >= NTDDI_WIN10) || (SDL_WINRT_USE_APPLICATIONVIEW && SDL_WINAPI_FAMILY_PHONE)
+-                mode.w = (int)SDL_floorf(appView->VisibleBounds.Width);
+-                mode.h = (int)SDL_floorf(appView->VisibleBounds.Height);
+-#else
+-                /* On platform(s) that do not support VisibleBounds, such as Windows 8.1,
+-                   fall back to CoreWindow's Bounds property.
+-                */
+-                mode.w = (int)SDL_floorf(coreWin->Bounds.Width);
+-                mode.h = (int)SDL_floorf(coreWin->Bounds.Height);
+-#endif
++                mode.w = (int)SDL_floorf(appView.VisibleBounds().Width);
++                mode.h = (int)SDL_floorf(appView.VisibleBounds().Height);
+                 mode.pixel_density = WINRT_DISPLAY_PROPERTY(LogicalDpi) / 96.0f;
+                 mode.format = D3D11_DXGIFormatToSDLPixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM);
+ 
+@@ -755,40 +736,31 @@ WINRT_DetectWindowFlags(SDL_Window *window)
+     SDL_WindowData *data = window->internal;
+     bool is_fullscreen = false;
+ 
+-#if SDL_WINRT_USE_APPLICATIONVIEW
+     if (data->appView) {
+-        is_fullscreen = data->appView->IsFullScreenMode;
++        is_fullscreen = data->appView.IsFullScreenMode();
+     }
+-#elif SDL_WINAPI_FAMILY_PHONE || NTDDI_VERSION == NTDDI_WIN8
+-    is_fullscreen = true;
+-#endif
+ 
+-    if (data->coreWindow.Get()) {
++    if (data->coreWindow) {
++        const Windows::Foundation::Rect bounds = data->coreWindow.Bounds();
+         if (is_fullscreen) {
+             SDL_VideoDisplay *display = SDL_GetVideoDisplayForWindow(window);
+-            int w = WINRT_DIPS_TO_PHYSICAL_PIXELS(data->coreWindow->Bounds.Width);
+-            int h = WINRT_DIPS_TO_PHYSICAL_PIXELS(data->coreWindow->Bounds.Height);
++            int w = WINRT_DIPS_TO_PHYSICAL_PIXELS(bounds.Width);
++            int h = WINRT_DIPS_TO_PHYSICAL_PIXELS(bounds.Height);
+ 
+-#if !SDL_WINAPI_FAMILY_PHONE || NTDDI_VERSION > NTDDI_WIN8
+-            // On all WinRT platforms, except for WinPhone 8.0, rotate the
+-            // window size.  This is needed to properly calculate
++            // Rotate the window size.  This is needed to properly calculate
+             // fullscreen vs. maximized.
+             const DisplayOrientations currentOrientation = WINRT_DISPLAY_PROPERTY(CurrentOrientation);
+             switch (currentOrientation) {
+-#if SDL_WINAPI_FAMILY_PHONE
+-            case DisplayOrientations::Landscape:
+-            case DisplayOrientations::LandscapeFlipped:
+-#else
+             case DisplayOrientations::Portrait:
+             case DisplayOrientations::PortraitFlipped:
+-#endif
+             {
+                 int tmp = w;
+                 w = h;
+                 h = tmp;
+             } break;
++            default:
++                break;
+             }
+-#endif
+ 
+             if (display->desktop_mode.w != w || display->desktop_mode.h != h) {
+                 latestFlags |= SDL_WINDOW_MAXIMIZED;
+@@ -797,20 +769,20 @@ WINRT_DetectWindowFlags(SDL_Window *window)
+             }
+         }
+ 
+-        if (data->coreWindow->Visible) {
++        const bool visible = data->coreWindow.Visible();
++        if (visible) {
+             latestFlags &= ~SDL_WINDOW_HIDDEN;
+         } else {
+             latestFlags |= SDL_WINDOW_HIDDEN;
+         }
+ 
+-#if SDL_WINAPI_FAMILY_PHONE && NTDDI_VERSION < NTDDI_WINBLUE
+-        // data->coreWindow->PointerPosition is not supported on WinPhone 8.0
+-        latestFlags |= SDL_WINDOW_MOUSE_FOCUS;
+-#else
+-        if (data->coreWindow->Visible && data->coreWindow->Bounds.Contains(data->coreWindow->PointerPosition)) {
+-            latestFlags |= SDL_WINDOW_MOUSE_FOCUS;
++        if (visible) {
++            const Windows::Foundation::Point pointer = data->coreWindow.PointerPosition();
++            if (pointer.X >= bounds.X && pointer.X <= bounds.X + bounds.Width &&
++                pointer.Y >= bounds.Y && pointer.Y <= bounds.Y + bounds.Height) {
++                latestFlags |= SDL_WINDOW_MOUSE_FOCUS;
++            }
+         }
+-#endif
+     }
+ 
+     return latestFlags;
+@@ -826,7 +798,7 @@ void WINRT_UpdateWindowFlags(SDL_Window *window, SDL_WindowFlags mask)
+     }
+ }
+ 
+-static bool WINRT_IsCoreWindowActive(CoreWindow ^ coreWindow)
++static bool WINRT_IsCoreWindowActive(CoreWindow const &coreWindow)
+ {
+     /* WinRT does not appear to offer API(s) to determine window-activation state,
+        at least not that I am aware of in Win8 - Win10.  As such, SDL tracks this
+@@ -836,9 +808,9 @@ static bool WINRT_IsCoreWindowActive(CoreWindow ^ coreWindow)
+        of the following hack (that uses "SDLHelperWindowActivationState").
+          -- DavidL.
+     */
+-    if (coreWindow->CustomProperties->HasKey("SDLHelperWindowActivationState")) {
++    if (coreWindow.CustomProperties().HasKey(L"SDLHelperWindowActivationState")) {
+         CoreWindowActivationState activationState =
+-            safe_cast<CoreWindowActivationState>(coreWindow->CustomProperties->Lookup("SDLHelperWindowActivationState"));
++            winrt::unbox_value<CoreWindowActivationState>(coreWindow.CustomProperties().Lookup(L"SDLHelperWindowActivationState"));
+         return activationState != CoreWindowActivationState::Deactivated;
+     }
+ 
+@@ -854,10 +826,8 @@ static bool WINRT_IsCoreWindowActive(CoreWindow ^ coreWindow)
+ extern "C" {
+ HWND uwp_window_handle()
+ {
+-    CoreWindow ^ coreWindow = CoreWindow::GetForCurrentThread();
+-    Platform::Agile<Windows::UI::Core::CoreWindow> m_window;
+-    m_window = coreWindow;
+-    return (HWND) reinterpret_cast<IUnknown *>(m_window.Get());
++    // The CoreWindow outlives this reference; callers get its raw ABI pointer.
++    return (HWND)winrt::get_abi(CoreWindow::GetForCurrentThread());
+ }
+ }
+ 
+@@ -894,7 +864,7 @@ bool WINRT_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
+ #ifndef __XBOXSERIES__
+     }
+ #endif
+-    SDL_SetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WINRT_WINDOW_POINTER, reinterpret_cast<IInspectable *>(data->coreWindow.Get()));
++    SDL_SetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WINRT_WINDOW_POINTER, winrt::get_abi(data->coreWindow));
+ 
+     if (WINRT_XAMLWasEnabled) {
+         data->swapChainBackgroundPanel = (IUnknown *)WINRT_GetSwapChainBackgroundPanelNative();
+@@ -940,11 +910,11 @@ bool WINRT_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
+             if (data->egl_surface == NULL) {
+                 return SDL_EGL_SetError("unable to create EGL native-window surface", "eglCreateWindowSurface");
+             }
+-        } else if (data->coreWindow.Get() != nullptr) {
++        } else if (data->coreWindow) {
+             /* Attempt to create a window surface using newer versions of
+              * ANGLE/WinRT:
+              */
+-            IInspectable *coreWindowAsIInspectable = reinterpret_cast<IInspectable *>(data->coreWindow.Get());
++            IInspectable *coreWindowAsIInspectable = static_cast<IInspectable *>(winrt::get_abi(data->coreWindow));
+             data->egl_surface = _this->egl_data->eglCreateWindowSurface(
+                 _this->egl_data->egl_display,
+                 _this->egl_data->egl_config,
+@@ -958,7 +928,7 @@ bool WINRT_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
+         }
+     }
+ #elif SDL_VIDEO_OPENGL_WGL
+-    data->hdc = (HDC)data->coreWindow.Get();
++    data->hdc = (HDC)winrt::get_abi(data->coreWindow);
+ #endif
+ 
+     // Determine as many flags dynamically, as possible.
+@@ -992,29 +962,23 @@ bool WINRT_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
+            user choice of various things.  For now, just adapt the SDL_Window to
+            whatever Windows set-up as the native-window's geometry.
+         */
+-        window->x = (int)SDL_lroundf(data->coreWindow->Bounds.Left);
+-        window->y = (int)SDL_lroundf(data->coreWindow->Bounds.Top);
+-#if NTDDI_VERSION < NTDDI_WIN10
+-        // On WinRT 8.x / pre-Win10, just use the size we were given.
+-        window->w = (int)SDL_floorf(data->coreWindow->Bounds.Width);
+-        window->h = (int)SDL_floorf(data->coreWindow->Bounds.Height);
+-#else
++        window->x = (int)SDL_lroundf(data->coreWindow.Bounds().X);
++        window->y = (int)SDL_lroundf(data->coreWindow.Bounds().Y);
+         /* On Windows 10, we occasionally get control over window size.  For windowed
+            mode apps, try this.
+         */
+         bool didSetSize = false;
+         if ((requestedFlags & SDL_WINDOW_FULLSCREEN) == 0) {
+-            const Windows::Foundation::Size size((float)window->w, (float)window->h);
+-            didSetSize = data->appView->TryResizeView(size);
++            const Windows::Foundation::Size size{ (float)window->w, (float)window->h };
++            didSetSize = data->appView.TryResizeView(size);
+         }
+         if (!didSetSize) {
+             /* We either weren't able to set the window size, or a request for
+                fullscreen was made.  Get window-size info from the OS.
+             */
+-            window->w = (int)SDL_floorf(data->coreWindow->Bounds.Width);
+-            window->h = (int)SDL_floorf(data->coreWindow->Bounds.Height);
++            window->w = (int)SDL_floorf(data->coreWindow.Bounds().Width);
++            window->h = (int)SDL_floorf(data->coreWindow.Bounds().Height);
+         }
+-#endif
+ 
+         WINRT_TVOutputOverrideApplyToWindow(window);
+ 
+@@ -1024,7 +988,7 @@ bool WINRT_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
+         );
+ 
+         // Try detecting if the window is active
+-        bool isWindowActive = WINRT_IsCoreWindowActive(data->coreWindow.Get());
++        bool isWindowActive = WINRT_IsCoreWindowActive(data->coreWindow);
+         if (isWindowActive) {
+             SDL_SetKeyboardFocus(window);
+         }
+@@ -1043,36 +1007,35 @@ bool WINRT_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
+ 
+ void WINRT_SetWindowSize(SDL_VideoDevice *_this, SDL_Window *window)
+ {
+-#if NTDDI_VERSION >= NTDDI_WIN10
+     SDL_WindowData *data = window->internal;
+-    const Windows::Foundation::Size size((float)window->floating.w, (float)window->floating.h);
+-    if (data->appView->TryResizeView(size)) {
++    const Windows::Foundation::Size size{ (float)window->floating.w, (float)window->floating.h };
++    if (data->appView && data->appView.TryResizeView(size)) {
+         SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_RESIZED, window->floating.w, window->floating.h);
+     }
+-#endif
+ }
+ 
+ SDL_FullscreenResult WINRT_SetWindowFullscreen(SDL_VideoDevice *_this, SDL_Window *window, SDL_VideoDisplay *display, SDL_FullscreenOp fullscreen)
+ {
+-#if NTDDI_VERSION >= NTDDI_WIN10
+     SDL_WindowData *data = window->internal;
+-    bool isWindowActive = WINRT_IsCoreWindowActive(data->coreWindow.Get());
++    if (!data->coreWindow || !data->appView) {
++        return SDL_FULLSCREEN_SUCCEEDED;
++    }
++    bool isWindowActive = WINRT_IsCoreWindowActive(data->coreWindow);
+     if (isWindowActive) {
+         if (fullscreen) {
+-            if (!data->appView->IsFullScreenMode) {
+-                if (data->appView->TryEnterFullScreenMode()) {
++            if (!data->appView.IsFullScreenMode()) {
++                if (data->appView.TryEnterFullScreenMode()) {
+                     return SDL_FULLSCREEN_SUCCEEDED;
+                 } else {
+                     return SDL_FULLSCREEN_FAILED;
+                 }
+             }
+         } else {
+-            if (data->appView->IsFullScreenMode) {
+-                data->appView->ExitFullScreenMode();
++            if (data->appView.IsFullScreenMode()) {
++                data->appView.ExitFullScreenMode();
+             }
+         }
+     }
+-#endif
+ 
+     return SDL_FULLSCREEN_SUCCEEDED;
+ }
+@@ -1098,59 +1061,32 @@ void WINRT_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
+     }
+ }
+ 
+-static ABI::Windows::System::Display::IDisplayRequest *WINRT_CreateDisplayRequest(SDL_VideoDevice *_this)
++// Returns an owned reference to a Windows.System.Display.DisplayRequest, as IUnknown.
++static IUnknown *WINRT_CreateDisplayRequest(SDL_VideoDevice *_this)
+ {
+-    // Setup a WinRT DisplayRequest object, usable for enabling/disabling screensaver requests
+-    const wchar_t *wClassName = L"Windows.System.Display.DisplayRequest";
+-    HSTRING hClassName;
+-    IActivationFactory *pActivationFactory = NULL;
+-    IInspectable *pDisplayRequestRaw = nullptr;
+-    ABI::Windows::System::Display::IDisplayRequest *pDisplayRequest = nullptr;
+-    HRESULT hr;
+-
+-    hr = ::WindowsCreateString(wClassName, (UINT32)SDL_wcslen(wClassName), &hClassName);
+-    if (FAILED(hr)) {
+-        goto done;
+-    }
+-
+-    hr = Windows::Foundation::GetActivationFactory(hClassName, &pActivationFactory);
+-    if (FAILED(hr)) {
+-        goto done;
+-    }
+-
+-    hr = pActivationFactory->ActivateInstance(&pDisplayRequestRaw);
+-    if (FAILED(hr)) {
+-        goto done;
+-    }
+-
+-    hr = pDisplayRequestRaw->QueryInterface(SDL_IID_IDisplayRequest, (void **)&pDisplayRequest);
+-    if (FAILED(hr)) {
+-        goto done;
+-    }
+-
+-done:
+-    if (pDisplayRequestRaw) {
+-        pDisplayRequestRaw->Release();
+-    }
+-    if (pActivationFactory) {
+-        pActivationFactory->Release();
+-    }
+-    if (hClassName) {
+-        ::WindowsDeleteString(hClassName);
++    try {
++        // Usable for enabling/disabling screensaver requests
++        Windows::System::Display::DisplayRequest request;
++        return static_cast<IUnknown *>(winrt::detach_abi(request));
++    } catch (winrt::hresult_error const &) {
++        return NULL;
+     }
+-
+-    return pDisplayRequest;
+ }
+ 
+ bool WINRT_SuspendScreenSaver(SDL_VideoDevice *_this)
+ {
+     SDL_VideoData *internal = _this->internal;
+     if (internal && internal->displayRequest) {
+-        ABI::Windows::System::Display::IDisplayRequest *displayRequest = (ABI::Windows::System::Display::IDisplayRequest *)internal->displayRequest;
+-        if (_this->suspend_screensaver) {
+-            displayRequest->RequestActive();
+-        } else {
+-            displayRequest->RequestRelease();
++        Windows::System::Display::DisplayRequest request{ nullptr };
++        winrt::copy_from_abi(request, internal->displayRequest);
++        try {
++            if (_this->suspend_screensaver) {
++                request.RequestActive();
++            } else {
++                request.RequestRelease();
++            }
++        } catch (winrt::hresult_error const &) {
++            // RequestRelease without a matching RequestActive fails; nothing to undo.
+         }
+     }
+     return true;
+diff --git a/src/video/winrt/SDL_winrtvideo_cpp.h b/src/video/winrt/SDL_winrtvideo_cpp.h
+index 120fd2296..b756e6fee 100644
+--- a/src/video/winrt/SDL_winrtvideo_cpp.h
++++ b/src/video/winrt/SDL_winrtvideo_cpp.h
+@@ -21,9 +21,7 @@
+ 
+ // Windows includes:
+ #include <windows.h>
+-#ifdef __cplusplus_winrt
+-#include <agile.h>
+-#endif
++#include "../../core/winrt/SDL_winrt_cppwinrt.h"
+ 
+ // SDL includes:
+ 
+@@ -33,12 +31,12 @@
+ #define SDL_WINRT_USE_APPLICATIONVIEW 1
+ #endif
+ 
+-#ifdef __cplusplus_winrt
++#ifdef __cplusplus
+ extern "C" {
+ #endif
+ #include "../SDL_sysvideo.h"
+ #include "../SDL_egl_c.h"
+-#ifdef __cplusplus_winrt
++#ifdef __cplusplus
+ }
+ #endif
+ 
+@@ -53,8 +51,8 @@ struct SDL_VideoData
+     /* Event token(s), for unregistering WinRT event handler(s).
+        These are just a struct with a 64-bit integer inside them
+     */
+-#ifdef __cplusplus_winrt
+-    Windows::Foundation::EventRegistrationToken gameBarIsInputRedirectedToken;
++#ifdef __cplusplus
++    winrt::event_token gameBarIsInputRedirectedToken;
+ #else
+     __int64 gameBarIsInputRedirectedToken;
+ #endif
+@@ -76,7 +74,7 @@ extern SDL_Window *WINRT_GlobalSDLWindow;
+    SDL_Window flags that can be updated should be specified in 'mask'.
+ */
+ extern void WINRT_UpdateWindowFlags(SDL_Window *window, SDL_WindowFlags mask);
+-#ifdef __cplusplus_winrt
++#ifdef __cplusplus
+ extern "C" SDL_WindowFlags WINRT_DetectWindowFlags(SDL_Window *window); // detects flags w/o applying them
+ extern "C" bool WINRT_TVOutputSizeOverridesActive(void);
+ extern "C" void WINRT_TVOutputOverrideApplyToWindow(SDL_Window *window);
+@@ -88,19 +86,15 @@ extern "C" void WINRT_TVOutputOverrideApplyToWindow(SDL_Window *window);
+ //     Windows::Graphics::Display::DisplayOrientations currentOrientation;
+ // } SDL_DisplayModeData;
+ 
+-#ifdef __cplusplus_winrt
++#ifdef __cplusplus
+ 
+ // A convenience macro to get a WinRT display property
+-#if NTDDI_VERSION > NTDDI_WIN8
+-#define WINRT_DISPLAY_PROPERTY(NAME) (Windows::Graphics::Display::DisplayInformation::GetForCurrentView()->NAME)
+-#else
+-#define WINRT_DISPLAY_PROPERTY(NAME) (Windows::Graphics::Display::DisplayProperties::NAME)
+-#endif
++#define WINRT_DISPLAY_PROPERTY(NAME) (Windows::Graphics::Display::DisplayInformation::GetForCurrentView().NAME())
+ 
+ // Converts DIPS to/from physical pixels
+ #define WINRT_DIPS_TO_PHYSICAL_PIXELS(DIPS)    ((int)(0.5f + (((float)(DIPS) * (float)WINRT_DISPLAY_PROPERTY(LogicalDpi)) / 96.f)))
+ #define WINRT_PHYSICAL_PIXELS_TO_DIPS(PHYSPIX) (((float)(PHYSPIX)*96.f) / WINRT_DISPLAY_PROPERTY(LogicalDpi))
+-#endif // __cplusplus_winrt
++#endif // __cplusplus
+ 
+ // Internal window data
+ typedef struct SDL_WindowData
+@@ -109,15 +103,15 @@ typedef struct SDL_WindowData
+     HDC hdc;
+ #endif
+     SDL_Window *sdlWindow;
+-    #ifdef __cplusplus_winrt
+-        Platform::Agile<Windows::UI::Core::CoreWindow> coreWindow;
++    #ifdef __cplusplus
++        Windows::UI::Core::CoreWindow coreWindow{ nullptr };
+     #endif
+ #ifdef SDL_VIDEO_OPENGL_EGL
+     EGLSurface egl_surface;
+ #endif
+-#ifdef __cplusplus_winrt
++#ifdef __cplusplus
+ #if SDL_WINRT_USE_APPLICATIONVIEW
+-    Windows::UI::ViewManagement::ApplicationView ^ appView;
++    Windows::UI::ViewManagement::ApplicationView appView{ nullptr };
+ #endif
+ #endif
+     IUnknown *swapChainBackgroundPanel;

@@ -81,6 +81,7 @@
           };
           game = import ./templates/game/game.nix xboxLib;
           hello = import ./example/hello.nix xboxLib;
+          sdlgame = import ./templates/sdl/game.nix xboxLib;
           # Wine runs midlrt for the XAML sample and MSBuild for the .vcxproj
           # route. Nixpkgs has no Wine for Apple silicon.
           hasWine = pkgs.stdenv.hostPlatform.isLinux;
@@ -100,10 +101,11 @@
             }
             // {
               default = if hasWine then hello else game;
-              inherit game;
+              inherit game sdlgame;
               zlib-xbox = pkgsXbox.zlib;
               hello-xbox = pkgsXbox.hello;
               luau-xbox = pkgsXbox.luau;
+              sdl3-xbox = pkgsXbox.SDL3;
               xbox-cxx-headers = xbox.cxxHeaders;
               xbox-cc = xbox.xboxCC;
             };
@@ -115,6 +117,7 @@
               program = pkgs.lib.getExe app.deployTool;
             };
             deploy-game = app.mkDeploy game;
+            deploy-sdlgame = app.mkDeploy sdlgame;
           }
           // withWine { deploy-hello = app.mkDeploy hello; };
           checks = {
@@ -122,7 +125,7 @@
               inherit pkgs llvmPackages;
               compiler = xbox.xboxCC;
             };
-            inherit game;
+            inherit game sdlgame;
             zlib-xbox = pkgsXbox.zlib;
             hello-xbox = pkgsXbox.hello;
             luau-xbox = pkgsXbox.luau;
@@ -133,6 +136,7 @@
           };
           devShells = {
             game = game.devShell;
+            sdlgame = sdlgame.devShell;
           }
           // withWine {
             hello = hello.devShell;
@@ -166,6 +170,10 @@
       templates.game = {
         path = ./templates/game;
         description = "A Direct3D 12 game for Xbox, built with Meson";
+      };
+      templates.sdl = {
+        path = ./templates/sdl;
+        description = "An SDL3 game for Xbox, built with Meson";
       };
     };
 }

@@ -69,7 +69,9 @@ nix develop
 make deploy
 ```
 
-The template is a full-screen Direct3D 12 game built with Meson; CMake works too. `mkXboxApp`
+The template is a full-screen Direct3D 12 game built with Meson; CMake works too.
+For SDL3, use `#sdl` instead: `pkgsXbox.SDL3` carries SDL's UWP backend,
+ported to build with Clang. `mkXboxApp`
 takes an ordinary derivation, using any build system and any `pkgsXbox`
 libraries, and produces an installable package. No Visual Studio project or
 Wine is involved. See [building apps](docs/apps.md).
@@ -108,6 +110,8 @@ to add ports.
 | `nix develop .#hello` | Its incremental build environment |
 | `nix build .#hello-vcxproj` | The sample through its Visual Studio project |
 | `nix build .#game` | The game template's package |
+| `nix build .#sdlgame` | The SDL3 template's package |
+| `nix build .#sdl3-xbox` | SDL3 with its UWP backend, static |
 | `nix run .#deploy-game` | Deploy it to the console |
 | `nix build .#xbox-cc` | Wrapped Clang cross compiler and binutils |
 
