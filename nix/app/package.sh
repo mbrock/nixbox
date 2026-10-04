@@ -32,6 +32,10 @@ fi
 # Debug symbols stay out of the package, beside it for crash dumps.
 find "$layout" -name '*.pdb' -exec mv -t "$out/symbols" {} +
 rmdir --ignore-fail-on-non-empty "$out/symbols"
+# A XAML app's EntryPoint is resolved against its winmd at activation.
+if [[ -n "${XBOX_WINMD:-}" ]]; then
+  cp "$XBOX_WINMD"/*.winmd "$layout/"
+fi
 cp "$XBOX_MANIFEST" "$layout/AppxManifest.xml"
 mkdir -p "$layout/Assets"
 cp -r "$XBOX_ASSETS/." "$layout/Assets/"

@@ -1,9 +1,8 @@
 #pragma once
 
 // <windows.h> comes first because wWinMain needs HINSTANCE and PWSTR. Written
-// the way a Visual Studio project would write it: build.sh force-includes
-// include/msvc-compat.h ahead of this, which is where the two clang-specific
-// adjustments live.
+// the way a Visual Studio project would write it, so the same file serves the
+// CMake build and the .vcxproj check.
 #ifndef WIN32_LEAN_AND_MEAN
     #define WIN32_LEAN_AND_MEAN
 #endif
@@ -11,6 +10,9 @@
     #define NOMINMAX
 #endif
 #include <windows.h>
+// winbase.h's GetCurrentTime macro breaks XAML's Timeline.GetCurrentTime;
+// Visual Studio's C++/WinRT XAML template undefines it the same way.
+#undef GetCurrentTime
 
 // WIN32_LEAN_AND_MEAN drops objbase.h, and with it unknwn.h. winrt/base.h has a
 // static_assert requiring IUnknown to already exist, so include it by hand

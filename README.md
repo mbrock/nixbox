@@ -25,31 +25,33 @@ You'll need:
 git clone https://github.com/mbrock/nixbox.git
 cd nixbox
 
-# Build the app and its unsigned MSIX package.
+# Build the app and its MSIX package (nix build .#hello, plus the optional cache).
 ./build
 
-# Create a local development certificate and sign the package.
-./env ./package
-
-# Install and launch it on your Xbox.
+# Sign it with a local development certificate, install, launch, screenshot.
 export UWP_DEVICE_URL=https://your-xbox.example
-./env python3 deploy.py --replace
+nix run .#deploy-hello
 ```
 
 Use your console's Device Portal URL. HTTPS certificate verification is enabled;
 if the portal requires authentication, set `UWP_DEVICE_USER` and
-`OPENAPPX_DEVICE_PASSWORD` too. `--replace` replaces the installed sample after
-checking its publisher.
+`OPENAPPX_DEVICE_PASSWORD` too. Deploying replaces an earlier install of the
+sample after checking its publisher.
 
 The first build downloads the pinned SDK and toolchain inputs. No Windows
 machine, manual SDK installation, pip setup, or existing Wine prefix is needed.
 The optional [authenticated binary cache](docs/cache.md) speeds up subsequent
 builds on other machines; you can build from source without access to it.
 
-Edit [example/MainPage.cpp](example/MainPage.cpp), then repeat the build, sign,
-and deploy steps. Packages, app layouts, and deployment screenshots go into
-`build-output/`. See [development](docs/development.md) for incremental builds
-and signing details.
+To change the sample, edit [example/MainPage.cpp](example/MainPage.cpp) and
+build incrementally in its development shell:
+
+```sh
+nix develop .#hello
+make -C example deploy
+```
+
+See [development](docs/development.md) for details.
 
 ## Make your own game
 
@@ -97,9 +99,12 @@ to add ports.
 | `nix build .#toolchain` | Standalone build and packaging tools |
 | `nix build .#luau-xbox` | Static Luau VM and bytecode compiler |
 | `nix build .#zlib-xbox` | Static zlib and headers |
+| `nix build .#hello` | The XAML sample's package |
+| `nix run .#deploy-hello` | Deploy it to the console |
+| `nix develop .#hello` | Its incremental build environment |
+| `nix build .#hello-vcxproj` | The sample through its Visual Studio project |
 | `nix build .#game` | The game template's package |
 | `nix run .#deploy-game` | Deploy it to the console |
-| `nix build .#cube-shaders` | HLSL compiled into embedded shader bytecode |
 | `nix build .#xbox-cc` | Wrapped Clang cross compiler and binutils |
 
 ## What's working—and what's next

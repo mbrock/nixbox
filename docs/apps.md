@@ -73,6 +73,14 @@ Takes any `mkDerivation` arguments, plus:
 | `backgroundColor` | `#000000` | Tile and splash colour |
 | `assets` | placeholder logos | Directory with the four logo PNGs |
 | `manifest` | generated | Your own `AppxManifest.xml` instead |
+| `idl` | none | `.idl` declaring a XAML `Application` runtimeclass |
+| `entryPoint` | `App` | Manifest entry point, e.g. `hello.App` with `idl` |
+
+With `idl`, nixbox runs it through `midlrt` (under Wine, the one step that
+needs it) and `cppwinrt`; the generated `App.g.h`, `module.g.cpp`, and
+projection headers arrive through `buildInputs`, and `<namespace>.winmd` goes
+into the package. [example/hello.nix](../example/hello.nix) is a XAML app
+built this way.
 
 The build installs its executable into `bin/` (CMake's default) and any data
 into `share/<pname>/`; both become the package root. PDB files are moved to
@@ -92,6 +100,19 @@ Compared with the library compiler, the app compiler:
 Packaging then sets the GUI subsystem at version 6.2 and audits the
 executable's imports, failing builds the console would refuse to launch.
 
+## Shaders in CMake
+
+The toolchain file puts nixbox's CMake modules on `CMAKE_MODULE_PATH`:
+
+```cmake
+include(NixboxShaders)
+nixbox_shader(game Cube.hlsl cubeVertexShader vertexMain vs_6_0)
+```
+
+compiles one entry point with DXC into a header defining the byte array
+`cubeVertexShader`, on the target's include path. Add
+`directx-shader-compiler` to `nativeBuildInputs`.
+
 ## compileShaders
 
 ```nix
@@ -104,8 +125,8 @@ xbox.compileShaders {
 
 Each entry becomes `include/<name>.h` with a byte array named `<name>`. Put the
 result in `buildInputs` to put it on the include path. This suits build
-systems without their own shader step; the template compiles shaders in
-CMake instead, so they rebuild incrementally in the dev shell.
+systems without their own shader step; with CMake, `nixbox_shader` rebuilds
+them incrementally in the dev shell.
 
 ## Deploying
 

@@ -11,11 +11,10 @@ Wine. Declaring `MainPage` as a runtimeclass would pull in
 programmatically avoids both, and it is how an application has to be written to
 cross-compile at all.
 
-From the workspace root, run `./build`, `./env ./package`, then
-`./env python3 deploy.py --replace` with `UWP_DEVICE_URL` set to your Xbox Device
-Portal URL. See [development](../docs/development.md) for incremental builds.
-The Nix build supplies the headers and static libraries from `pkgsXbox.zlib`
-and `pkgsXbox.luau`. The UI checks compression/decompression, then compiles and
+From the workspace root, `nix develop .#hello`, then `make -C example deploy`
+with `UWP_DEVICE_URL` set to your Xbox Device Portal URL; or `./build` and
+`nix run .#deploy-hello`. [hello.nix](hello.nix) describes the app for
+`mkXboxApp`; `pkgsXbox.zlib` and `pkgsXbox.luau` are ordinary `buildInputs`. The UI checks compression/decompression, then compiles and
 runs a Luau gameplay script on the console. That script calls native C++ three
 times and returns health = 46, which drives the health bar. The VM uses Luau's
 sandboxed globals and script environment; no native code generator is linked.

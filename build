@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
+# nix build with the optional authenticated binary cache (docs/cache.md).
+#   ./build [OUTPUT] [NIX BUILD ARGS…]   (default output: hello)
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-cd "$root"
-mkdir -p build-output
 cache_netrc=${UWP_NIX_CACHE_NETRC:-${XDG_CONFIG_HOME:-$HOME/.config}/xbox-nix-cache/netrc}
 nix_options=(--accept-flake-config)
 if [[ -r "$cache_netrc" ]]; then
@@ -10,16 +10,6 @@ if [[ -r "$cache_netrc" ]]; then
 else
   nix_options+=(--option extra-substituters "")
 fi
-nix build "${nix_options[@]}" "$root#hello-uwp" --out-link build-output/result "$@"
-# Refresh only the generated layout; keep signed packages and deployment evidence.
-if [[ -e build-output/hello-layout ]]; then
-  [[ -f build-output/hello-layout/AppxManifest.xml ]] || {
-    echo "Refusing to replace an unrecognized hello-layout" >&2
-    exit 1
-  }
-  rm -rf build-output/hello-layout
-fi
-cp -RL build-output/result/layout build-output/hello-layout
-chmod -R u+w build-output/hello-layout
-cp build-output/result/hello-uwp.msix build-output/hello-uwp.unsigned.msix
-chmod u+w build-output/hello-uwp.unsigned.msix
+output=${1:-hello}
+shift || true
+nix build "${nix_options[@]}" "$root#$output" "$@"

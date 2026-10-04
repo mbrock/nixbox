@@ -9,24 +9,21 @@ reference material on the toolchain, development loop, and binary cache.
 ## Build, sign, deploy
 
 ```sh
-./build                                  # Nix build → build-output/
-./env ./package                          # sign with the local dev certificate
-UWP_DEVICE_URL=https://xbox.whale-justice.ts.net ./env python3 deploy.py --replace
+export UWP_DEVICE_URL=https://xbox.whale-justice.ts.net
+./build                                  # nix build .#hello, with the cache
+nix run .#deploy-hello -- --screenshot build-output/hello.png
+nix develop .#hello -c make -C example deploy   # incremental
 ```
 
-Deployment installs, launches, checks the process, and saves a console
-screenshot to `build-output/xbox-hello.png`. Look at that screenshot to verify
-a change on the console; the sample's status lines report whether each check
-passed. `build-output/deployment.json` records the last device and process.
+Deployment signs, installs, launches, checks the process, and saves a console
+screenshot. Look at that screenshot to verify a change on the console; the
+sample's status lines report whether each check passed. The game template
+works the same way (`.#game`, `deploy-game`, `make -C templates/game deploy`).
+Both are built by `mkXboxApp` ([docs/apps.md](docs/apps.md)), which also
+covers reading crash dumps when a launch fails. `nix build .#hello-vcxproj`
+checks the Visual Studio project route.
 
-Games are built the main way, without a Visual Studio project or Wine: see
-[docs/apps.md](docs/apps.md) and `templates/game/` (`nix build .#game`,
-`UWP_DEVICE_URL=… nix run .#deploy-game -- --screenshot build-output/game.png`).
-For quick iteration, `nix develop .#game` and then
-`make -C templates/game deploy` (its build/ is ignored by git). The XAML sample in `example/` uses the `.vcxproj` route for porting Visual Studio
-projects. docs/apps.md also covers reading crash dumps when a launch fails.
-
-Nix flakes only see tracked files: `git add` new files before `./build`.
+Nix flakes only see tracked files: `git add` new files before `nix build`.
 `nix flake check` runs the compiler, library, and app checks.
 
 ## Working rhythm

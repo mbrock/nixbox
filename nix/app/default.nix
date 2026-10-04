@@ -9,6 +9,7 @@
   llvmPackages,
   inputs,
   python,
+  tools,
 }:
 let
   inherit (pkgs) lib;
@@ -55,6 +56,7 @@ let
       publisherDisplayName,
       description,
       executable,
+      entryPoint,
       backgroundColor,
       capabilities,
     }:
@@ -79,7 +81,7 @@ let
           <Resource Language="en-US" />
         </Resources>
         <Applications>
-          <Application Id="App" Executable="${executable}" EntryPoint="App">
+          <Application Id="App" Executable="${executable}" EntryPoint="${entryPoint}">
             <uap:VisualElements DisplayName="${displayName}" Description="${description}"
               BackgroundColor="${backgroundColor}"
               Square150x150Logo="Assets\Square150x150Logo.png"
@@ -106,6 +108,7 @@ let
     set(CMAKE_AR ${appCC}/bin/x86_64-pc-windows-msvc-ar CACHE FILEPATH "")
     set(CMAKE_RANLIB ${appCC}/bin/x86_64-pc-windows-msvc-ranlib CACHE FILEPATH "")
     set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
+    list(APPEND CMAKE_MODULE_PATH ${./cmake})
     set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded CACHE STRING "")
     set(CMAKE_C_STANDARD_LIBRARIES "" CACHE STRING "")
     set(CMAKE_CXX_STANDARD_LIBRARIES "" CACHE STRING "")
@@ -142,12 +145,25 @@ let
       capabilities ? [ "internetClient" ],
       assets ? ./assets,
       manifest ? null,
+      idl ? null,
+      entryPoint ? "App",
       ...
     }@args:
     let
+      # A XAML app's Application class is a runtimeclass named by EntryPoint,
+      # declared in the .idl and resolved against <namespace>.winmd.
+      projection =
+        if idl == null then
+          null
+        else
+          compileIdl {
+            name = builtins.head (lib.splitString "." entryPoint);
+            src = idl;
+          };
       app = stdenv.mkDerivation (
         {
           cmakeFlags = [ "-DCMAKE_TOOLCHAIN_FILE=${toolchainFile}" ] ++ (args.cmakeFlags or [ ]);
+          buildInputs = lib.optional (projection != null) projection ++ (args.buildInputs or [ ]);
         }
         // removeAttrs args [
           "identity"
@@ -160,7 +176,10 @@ let
           "capabilities"
           "assets"
           "manifest"
+          "idl"
+          "entryPoint"
           "cmakeFlags"
+          "buildInputs"
         ]
       );
       manifestFile =
@@ -176,6 +195,7 @@ let
               publisherDisplayName
               description
               executable
+              entryPoint
               backgroundColor
               capabilities
               ;
@@ -186,6 +206,7 @@ let
         XBOX_MANIFEST = manifestFile;
         XBOX_ASSETS = assets;
         XBOX_AUDIT = "${inputs.uwp-crossbuild}/scripts/pe-import-audit.sh";
+        XBOX_WINMD = lib.optionalString (projection != null) "${projection}/lib";
       };
       exports = lib.concatStrings (lib.mapAttrsToList (name: value: "export ${name}=${lib.escapeShellArg value}\n") packageEnv);
 
@@ -227,6 +248,23 @@ let
         bash ${./package.sh} ${app} "$out"
       '';
 
+  # Run an .idl through midlrt (under Wine, the one step that needs it) and
+  # cppwinrt: include/ gets the C++/WinRT projection, App.g.h, and
+  # module.g.cpp; lib/<name>.winmd ships in the package. mkXboxApp's `idl`
+  # argument does this and adds the result to buildInputs.
+  compileIdl =
+    { name, src }:
+    pkgs.runCommand "${name}-projection" { nativeBuildInputs = [ tools ]; } ''
+      export WINEPREFIX="$TMPDIR/wine"
+      trap 'wineserver -k || true' EXIT
+      cp ${src} app.idl
+      uwp-with-wine uwp-gen-projection --idl app.idl --name ${name} --out gen > /dev/null
+      mkdir -p "$out/include" "$out/lib"
+      mv gen/${name}.winmd "$out/lib/"
+      rm -r gen/stubs
+      cp -r gen/. "$out/include/"
+    '';
+
   # Compile HLSL to DXIL with the native, signing DXC. Each entry becomes
   # include/<name>.h holding a byte array called <name>; put the result in
   # buildInputs to put it on the include path.
@@ -261,6 +299,7 @@ in
     stdenv
     mkXboxApp
     toolchainFile
+    compileIdl
     compileShaders
     deployTool
     mkDeploy

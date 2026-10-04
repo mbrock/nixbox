@@ -5,55 +5,45 @@
 ## Build, sign, deploy
 
 ```sh
-./build
-./env ./package
-UWP_DEVICE_URL=https://your-xbox.example ./env python3 deploy.py --replace
+./build                                   # nix build .#hello, with the optional cache
+UWP_DEVICE_URL=https://your-xbox.example nix run .#deploy-hello
 ```
 
-`./build` produces an unsigned package in Nix and refreshes the writable layout.
-`./package` signs locally. Deployment installs the public certificate, installs
-the app, launches it, checks the running process, and saves a console screenshot.
-`--replace` checks that an installed sample has the expected publisher before
-removing it.
+The sample is built by `mkXboxApp` from [hello.nix](../example/hello.nix), like
+any game: see [building apps](apps.md). Deployment signs a copy of the package
+with a local development certificate, installs it, launches it, checks the
+running process, and saves a console screenshot (`--screenshot PATH`; default
+`xbox-screenshot.png`).
 
 Set `UWP_DEVICE_USER` and `OPENAPPX_DEVICE_PASSWORD` if Device Portal requires
 credentials. HTTPS uses normal CA verification.
 
-| Output | Location |
-| --- | --- |
-| Nix build result | `build-output/result/` |
-| Writable app layout | `build-output/hello-layout/` |
-| Unsigned package | `build-output/hello-uwp.unsigned.msix` |
-| Signed package | `build-output/hello-uwp.msix` |
-| Console screenshot | `build-output/xbox-hello.png` |
-| Installed package and process information | `build-output/deployment.json` |
-
 ## Incremental builds
 
-For a faster iteration outside the Nix sandbox:
-
 ```sh
-./env bash -c 'uwp-with-wine uwp-build-project \
-  --project "$PWD/example/hello-uwp.vcxproj" --config Release --no-restore \
-  --out "$PWD/build-output/incremental-layout" \
-  --property ZlibIncludeDir="$XBOX_ZLIB_INCLUDE_DIR" \
-  --property ZlibLibrary="$XBOX_ZLIB_LIBRARY" \
-  --property LuauRoot="$XBOX_LUAU_ROOT" \
-  --property ShaderIncludeDir="$XBOX_SHADER_INCLUDE_DIR" \
-  --property DirectXHeadersIncludeDir="$XBOX_DIRECTX_HEADERS_INCLUDE_DIR"'
+nix develop .#hello
+make -C example            # CMake build in example/build/
+make -C example deploy     # package example/build/install and deploy it
 ```
 
-This writes a separate layout; the standard signing/deployment scripts use
-`build-output/hello-layout/`. Run `./build` before those scripts to deploy the
-normal Nix-built sample.
-
-`uwp-with-wine` starts an authenticated temporary Xvfb display and initializes
-Wine automatically. Set `WINEPREFIX` to change its cache location; the default
-is `${XDG_CACHE_HOME:-$HOME/.cache}/xbox-uwp/wine`. Sandboxed Nix builds use a
-fresh, disposable prefix in their build directory.
+The development shell has the same compiler, flags, and `pkgsXbox` libraries as
+the Nix build, through the normal Nix dependency mechanism: `buildInputs`
+supply include and library paths, and CMake finds zlib and Luau on
+`CMAKE_PREFIX_PATH`. A full build takes about ten seconds with the precompiled
+header; an edit reaches the console in about fifteen.
 
 Nix flakes use tracked source files. Stage new files with `git add` before
-building, so they become part of the flake source.
+`nix build`.
+
+## The XAML sample
+
+`App` derives from `Windows.UI.Xaml.Application`, so it is a runtimeclass:
+[app.idl](../example/app.idl) declares it, and `mkXboxApp`'s `idl` argument
+runs it through `midlrt` (under Wine, the one step that needs it) and
+`cppwinrt`. The generated `App.g.h` and `module.g.cpp` arrive through
+`buildInputs`, and `hello.winmd` goes into the package, where activation
+resolves the manifest's `EntryPoint="hello.App"`. `MainPage` is a plain C++
+class, so no XAML compiler is involved.
 
 ## Direct3D view
 
@@ -61,35 +51,39 @@ The sample embeds a Direct3D 12 composition swap chain in a programmatically
 created XAML `SwapChainPanel`. [D3DView.cpp](../example/D3DView.cpp) owns the
 hardware device, command queue, depth buffer, mesh, and swap chain, with one
 command allocator per back buffer and a fence that keeps the CPU from reusing
-an allocator the GPU is still reading. The `d3d12.h` and `d3dx12.h` helper headers
+an allocator the GPU is still reading. The `d3d12.h` and `d3dx12.h` headers
 come from Nixpkgs' `directx-headers` (Microsoft's DirectX-Headers), not the
-Windows SDK, which has never shipped `d3dx12.h`; `XBOX_DIRECTX_HEADERS_INCLUDE_DIR`
-points incremental builds at them. It renders a lit, rotating
+Windows SDK, which has never shipped `d3dx12.h`. It renders a lit, rotating
 cube on XAML frame callbacks on the UI thread, stops callbacks when unloaded,
 and resizes buffers for panel size and composition-scale changes. A lost device
 at presentation is recreated; other graphics failures appear in the status text.
 
 [Cube.hlsl](../example/Shaders/Cube.hlsl) contains the vertex and pixel shaders.
-Nix compiles them with the pinned SDK's `fxc` under Wine, generating headers
-with embedded Shader Model 5 bytecode, which Direct3D 12 accepts alongside a
-root signature built in C++ (the `Scene` constants are root constants). The console runs only the compiled
-shaders; it needs no runtime shader compiler. `nix build .#cube-shaders` builds
-the headers separately, and `XBOX_SHADER_INCLUDE_DIR` supplies their location
-for incremental builds. Editing HLSL and rerunning `./build` recompiles it.
+CMake compiles them with the native DXC (`nixbox_shader`) into headers with
+embedded, signed Shader Model 6 bytecode; the `Scene` constants are root
+constants of a root signature built in C++. The console needs no runtime
+shader compiler.
+
+## Visual Studio projects
+
+[hello-uwp.vcxproj](../example/hello-uwp.vcxproj) describes the same sample
+the way Visual Studio keeps it. `nix build .#hello-vcxproj` builds it through
+uwp-crossbuild's project reader, as a check that porting a Visual Studio
+project still works. Such a project names its dependencies by path, so that
+derivation passes them as MSBuild properties; nothing else needs them.
 
 ## Signing keys
 
-The development certificate and private key live outside the repository:
+The deploy tool keeps one development certificate per publisher outside the
+repository and the Nix store:
 
 ```text
-${XDG_CONFIG_HOME:-$HOME/.config}/uwp-crossbuild/dev.pfx
-${XDG_CONFIG_HOME:-$HOME/.config}/uwp-crossbuild/dev.cer
+${XDG_CONFIG_HOME:-$HOME/.config}/nixbox/certs/CN_nixbox-dev.pfx
+${XDG_CONFIG_HOME:-$HOME/.config}/nixbox/certs/CN_nixbox-dev.cer
 ```
 
-`UWP_CERT_DIR` overrides the directory for both packaging and deployment.
-`./package` reuses the key or creates one with private permissions. The publisher
-is `CN=uwp-crossbuild-dev`. Keeping signing outside the Nix build prevents the
-private key from entering the store or binary cache.
+It creates one with private permissions on first use. Keeping signing outside
+the Nix build prevents the private key from entering the store or binary cache.
 
 ## Checks
 
@@ -99,8 +93,8 @@ nix flake check
 
 The flake checks compile and link ordinary C++ headers and exception handling,
 verify the UWP CRT partition and negative configure probes, inspect zlib's
-archive format, and build Hello, Luau, and the packaged app. Target runtime checks
-run separately under Wine or on the console.
+archive format, and build Hello, Luau, the sample both ways, and the game
+template. Target runtime checks run separately under Wine or on the console.
 
 Run GNU Hello's Wine checks:
 
@@ -126,11 +120,10 @@ returned health.
 
 LLVM 23.1.0 passed the full flake build checks, GNU Hello's six Wine behavior
 checks, C++ exception unwinding with destructor cleanup, and the Luau gameplay
-smoke test. The rebuilt app was signed, installed, and launched on Xbox Series X.
-The Direct3D addition was also built, deployed, and observed rendering on the
-hardware device. Two console screenshots show different cube orientations.
-The screenshot shows successful zlib compression and **health = 46, native
-callbacks = 3 — PASS**.
+smoke test. The sample, built by `mkXboxApp` with CMake, was signed, installed,
+and launched on Xbox Series X; its screenshot shows the Direct3D 12 cube,
+successful zlib compression, and **health = 46, native callbacks = 3 — PASS**.
+The game template was deployed the same way and from its development shell.
 
 Earlier checks also exercised relocated workspaces, fresh Wine prefixes, and
 empty-store substitution with signature verification. Cache requests without

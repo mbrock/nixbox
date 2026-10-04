@@ -30,8 +30,8 @@ its C++/WinRT compatibility fixes separately.
 compiler searches this directory ahead of the original SDK. Packages receive
 these fixes without custom CXXFLAGS or forced includes; C headers are unchanged.
 
-The adapter is exposed as `pkgsXbox.xboxCxxHeaders`, the `xbox-cxx-headers` flake
-output, and `XBOX_CXX_HEADERS` in the development shell. Future shared SDK header
+The adapter is exposed as `pkgsXbox.xboxCxxHeaders`, and the `xbox-cxx-headers` flake
+output. Future shared SDK header
 fixes belong here; project-specific changes belong in package recipes.
 
 MSVC's CRT implements exception handling but does not supply the libunwind API.
@@ -76,8 +76,9 @@ record Microsoft download URLs and SHA-256 hashes.
 SDK extraction runs natively on Linux using `msiextract`. xwin receives a pinned
 manifest and all payloads from Nix, then runs offline inside the sandbox.
 C++/WinRT builds natively with pre-fetched winmd headers. SDK derivations create
-header case aliases. Wine runs `midlrt`, the 32-bit `makepri` resource compiler, and `fxc` for the
-example's embedded Direct3D shaders;
+header case aliases. Wine runs only `midlrt`, for apps with a XAML `Application` class, and the
+32-bit `makepri` resource compiler on the Visual Studio project route;
+shaders compile with the native DXC;
 MSXML6 DLLs are extracted and installed in Wine automatically.
 
 Proprietary SDK outputs are marked unfree and explicitly allowed by this flake.

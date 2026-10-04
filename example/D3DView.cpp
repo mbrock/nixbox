@@ -3,8 +3,8 @@
 
 #include <d3dx12.h>
 #include <windows.ui.xaml.media.dxinterop.h>
-#include <CubeVertexShader.h>
-#include <CubePixelShader.h>
+#include <cubePixelShader.h>
+#include <cubeVertexShader.h>
 #include <algorithm>
 #include <cmath>
 #include <cstring>

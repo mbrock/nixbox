@@ -212,21 +212,17 @@ let
     ]
     ++ runtime;
   };
-  shaders = pkgs.runCommand "nixbox-cube-shaders" { nativeBuildInputs = [ tools ]; } ''
-    export WINEPREFIX="$TMPDIR/wine"
-    export WINEDLLOVERRIDES="d3dcompiler_47=n;mscoree,mshtml=;msxml6=n,b"
-    trap 'wineserver -k || true' EXIT
+  # The .vcxproj route takes headers by explicit path; DXC's native build
+  # writes the same headers the sample's CMake build generates.
+  shaders = pkgs.runCommand "nixbox-cube-shaders" { nativeBuildInputs = [ pkgs.directx-shader-compiler ]; } ''
     mkdir -p "$out/include"
-    cp ${../example/Shaders/Cube.hlsl} Cube.hlsl
-    fxc="${sdk}/Windows Kits/10/bin/10.0.22621.0/x64/fxc.exe"
-    uwp-with-wine wine "$fxc" /nologo /O3 /T vs_5_0 /E vertexMain \
-      /Fh CubeVertexShader.h /Vn cubeVertexShader Cube.hlsl
-    uwp-with-wine wine "$fxc" /nologo /O3 /T ps_5_0 /E pixelMain \
-      /Fh CubePixelShader.h /Vn cubePixelShader Cube.hlsl
-    cp CubeVertexShader.h CubePixelShader.h "$out/include/"
+    for shader in cubeVertexShader:vertexMain:vs_6_0 cubePixelShader:pixelMain:ps_6_0; do
+      IFS=: read -r name entry profile <<< "$shader"
+      dxc -O3 -T "$profile" -E "$entry" -Fh "$out/include/$name.h" -Vn "$name" ${../example/Shaders/Cube.hlsl}
+    done
   '';
   hello =
-    pkgs.runCommand "hello-uwp"
+    pkgs.runCommand "hello-vcxproj"
       {
         nativeBuildInputs = [ tools ];
       }
@@ -242,9 +238,9 @@ let
           --property ShaderIncludeDir=${shaders}/include \
           --property DirectXHeadersIncludeDir=${pkgs.directx-headers}/include/directx
         openappx validate --root "$TMPDIR/layout"
-        openappx pack --root "$TMPDIR/layout" --out "$out/hello-uwp.msix"
+        openappx pack --root "$TMPDIR/layout" --out "$out/hello.msix"
         cp -a "$TMPDIR/layout" "$out/layout"
-        openappx inspect --package "$out/hello-uwp.msix"
+        openappx inspect --package "$out/hello.msix"
       '';
 in
 {

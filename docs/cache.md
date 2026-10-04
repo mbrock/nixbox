@@ -38,7 +38,7 @@ For a direct Nix command:
 
 ```sh
 nix build --accept-flake-config \
-  --option netrc-file /run/secrets/xbox-cache.netrc .#hello-uwp
+  --option netrc-file /run/secrets/xbox-cache.netrc .#hello
 ```
 
 Cloud agents need only the HTTP credential. They do not need the cache's signing

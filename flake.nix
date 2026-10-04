@@ -43,7 +43,7 @@
       app = import ./nix/app {
         inherit pkgs pkgsXbox llvmPackages inputs;
         inherit (xbox) xboxCC;
-        inherit (toolchain) python;
+        inherit (toolchain) python tools;
       };
       # The interface a game's flake uses: see templates/game.
       xboxLib = app // {
@@ -51,12 +51,13 @@
         inherit (xbox) mkPkgsXbox;
       };
       game = import ./templates/game/game.nix xboxLib;
+      hello = import ./example/hello.nix xboxLib;
     in
     {
       packages.${system} = toolchain.packages // {
-        default = toolchain.hello;
-        hello-uwp = toolchain.hello;
-        inherit game;
+        default = hello;
+        inherit hello game;
+        hello-vcxproj = toolchain.hello;
         zlib-xbox = pkgsXbox.zlib;
         hello-xbox = pkgsXbox.hello;
         luau-xbox = pkgsXbox.luau;
@@ -71,6 +72,7 @@
           program = pkgs.lib.getExe app.deployTool;
         };
         deploy-game = app.mkDeploy game;
+        deploy-hello = app.mkDeploy hello;
       };
       templates.game = {
         path = ./templates/game;
@@ -81,14 +83,15 @@
           inherit pkgs llvmPackages;
           compiler = xbox.xboxCC;
         };
-        hello-uwp = toolchain.hello;
-        inherit game;
+        inherit hello game;
+        hello-vcxproj = toolchain.hello;
         zlib-xbox = pkgsXbox.zlib;
         hello-xbox = pkgsXbox.hello;
         luau-xbox = pkgsXbox.luau;
       };
       devShells.${system} = {
         game = game.devShell;
+        hello = hello.devShell;
         default = pkgs.mkShell {
           packages = [
             toolchain.tools
@@ -96,13 +99,6 @@
             pkgs.openssl
           ];
           inherit (toolchain) UWP_XWIN_ROOT UWP_SDK_ROOT UWP_CPPWINRT_EXE;
-          UWP_MAKEPRI_X86 = "1";
-          XBOX_ZLIB_INCLUDE_DIR = "${pkgs.lib.getDev pkgsXbox.zlib}/include";
-          XBOX_ZLIB_LIBRARY = "${pkgs.lib.getLib pkgsXbox.zlib}/lib/zs.lib";
-          XBOX_LUAU_ROOT = pkgsXbox.luau;
-          XBOX_SHADER_INCLUDE_DIR = "${toolchain.shaders}/include";
-          XBOX_DIRECTX_HEADERS_INCLUDE_DIR = "${pkgs.directx-headers}/include/directx";
-          XBOX_CXX_HEADERS = xbox.cxxHeaders;
           WINEARCH = "wow64";
           WINEDEBUG = "-all";
           WINEDLLOVERRIDES = "mscoree,mshtml=;msxml6=n,b";

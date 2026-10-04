@@ -70,7 +70,7 @@ MainPage::MainPage() {
     title.Foreground(SolidColorBrush{winrt::Windows::UI::Colors::White()});
 
     TextBlock subtitle;
-    subtitle.Text(L"clang-cl + lld-link, packaged and signed by openappx");
+    subtitle.Text(L"Clang + LLD through Nix, packaged and signed by openappx");
     subtitle.FontSize(16);
     subtitle.HorizontalAlignment(HorizontalAlignment::Center);
     subtitle.Foreground(SolidColorBrush{winrt::Windows::UI::Colors::Gray()});
