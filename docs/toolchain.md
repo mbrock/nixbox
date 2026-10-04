@@ -76,7 +76,8 @@ record Microsoft download URLs and SHA-256 hashes.
 SDK extraction runs natively on Linux using `msiextract`. xwin receives a pinned
 manifest and all payloads from Nix, then runs offline inside the sandbox.
 C++/WinRT builds natively with pre-fetched winmd headers. SDK derivations create
-header case aliases. Wine runs `midlrt` and the 32-bit `makepri` resource compiler;
+header case aliases. Wine runs `midlrt`, the 32-bit `makepri` resource compiler, and `fxc` for the
+example's embedded Direct3D shaders;
 MSXML6 DLLs are extracted and installed in Wine automatically.
 
 Proprietary SDK outputs are marked unfree and explicitly allowed by this flake.

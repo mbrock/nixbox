@@ -1,6 +1,7 @@
 #include "pch.h"
 
 #include "MainPage.h"
+#include "D3DView.h"
 #include <winrt/Windows.UI.Xaml.Controls.Primitives.h>
 #include <zlib.h>
 #include <array>
@@ -59,16 +60,18 @@ ScriptResult runGameplayScript() {
 }
 } // namespace
 
+MainPage::~MainPage() = default;
+
 MainPage::MainPage() {
     TextBlock title;
     title.Text(L"Built on Linux");
-    title.FontSize(48);
+    title.FontSize(36);
     title.HorizontalAlignment(HorizontalAlignment::Center);
     title.Foreground(SolidColorBrush{winrt::Windows::UI::Colors::White()});
 
     TextBlock subtitle;
     subtitle.Text(L"clang-cl + lld-link, packaged and signed by openappx");
-    subtitle.FontSize(20);
+    subtitle.FontSize(16);
     subtitle.HorizontalAlignment(HorizontalAlignment::Center);
     subtitle.Foreground(SolidColorBrush{winrt::Windows::UI::Colors::Gray()});
 
@@ -88,7 +91,7 @@ MainPage::MainPage() {
     const std::string message = std::string("pkgsXbox zlib ") + zlibVersion() +
         (passed ? ": compression round-trip passed" : ": compression round-trip FAILED");
     result.Text(winrt::to_hstring(message));
-    result.FontSize(24);
+    result.FontSize(18);
     result.HorizontalAlignment(HorizontalAlignment::Center);
     result.Foreground(SolidColorBrush{passed ? winrt::Windows::UI::Colors::LightGreen()
                                              : winrt::Windows::UI::Colors::Red()});
@@ -96,7 +99,7 @@ MainPage::MainPage() {
     const auto script = runGameplayScript();
     TextBlock scriptResult;
     scriptResult.Text(winrt::to_hstring(script.message));
-    scriptResult.FontSize(24);
+    scriptResult.FontSize(18);
     scriptResult.HorizontalAlignment(HorizontalAlignment::Center);
     scriptResult.Foreground(SolidColorBrush{script.passed ? winrt::Windows::UI::Colors::LightGreen()
                                                         : winrt::Windows::UI::Colors::Red()});
@@ -107,11 +110,23 @@ MainPage::MainPage() {
     health.Width(520);
     health.HorizontalAlignment(HorizontalAlignment::Center);
 
+    SwapChainPanel view;
+    view.Width(520);
+    view.Height(220);
+    view.HorizontalAlignment(HorizontalAlignment::Center);
+    TextBlock graphicsStatus;
+    graphicsStatus.Text(L"Starting Direct3D…");
+    graphicsStatus.FontSize(16);
+    graphicsStatus.HorizontalAlignment(HorizontalAlignment::Center);
+    m_graphics = std::make_unique<D3DView>(view, graphicsStatus);
+
     StackPanel panel;
     panel.VerticalAlignment(VerticalAlignment::Center);
-    panel.Spacing(16);
+    panel.Spacing(10);
     panel.Children().Append(title);
     panel.Children().Append(subtitle);
+    panel.Children().Append(view);
+    panel.Children().Append(graphicsStatus);
     panel.Children().Append(result);
     panel.Children().Append(scriptResult);
     panel.Children().Append(health);

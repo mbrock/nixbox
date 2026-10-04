@@ -39,7 +39,7 @@
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ZlibIncludeDir);$(LuauRoot)/include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ZlibIncludeDir);$(LuauRoot)/include;$(ShaderIncludeDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <!-- Visual Studio's default. Overridden to c++20 by this toolchain:
            C++/WinRT under clang needs <coroutine>, README gotcha 1. -->
       <LanguageStandard>stdcpp17</LanguageStandard>
@@ -62,18 +62,20 @@
 
   <ItemDefinitionGroup>
     <Link>
-      <AdditionalDependencies>$(ZlibLibrary);$(LuauRoot)/lib/Luau.VM.lib;$(LuauRoot)/lib/Luau.Compiler.lib;$(LuauRoot)/lib/Luau.Ast.lib;$(LuauRoot)/lib/Luau.Bytecode.lib;$(LuauRoot)/lib/Luau.Common.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;dxgi.lib;$(ZlibLibrary);$(LuauRoot)/lib/Luau.VM.lib;$(LuauRoot)/lib/Luau.Compiler.lib;$(LuauRoot)/lib/Luau.Ast.lib;$(LuauRoot)/lib/Luau.Bytecode.lib;$(LuauRoot)/lib/Luau.Common.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
   <ItemGroup>
     <ClCompile Include="App.cpp" />
     <ClCompile Include="MainPage.cpp" />
+    <ClCompile Include="D3DView.cpp" />
     <ClCompile Include="module.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="App.h" />
     <ClInclude Include="MainPage.h" />
+    <ClInclude Include="D3DView.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

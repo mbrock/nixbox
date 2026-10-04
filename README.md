@@ -7,10 +7,11 @@ and signing tools. Nix handles the downloads and setup; you write C++ and deploy
 the result to an Xbox in Developer Mode.
 
 The included app runs **Luau gameplay scripts on a real Xbox Series X**, calls
-back into C++, and checks a zlib compression round-trip. Built with LLVM 23,
+back into C++, checks a zlib compression round-trip, and renders a **rotating Direct3D 11 cube**
+inside a XAML `SwapChainPanel`. Built with LLVM 23,
 packaged and signed on Linux.
 
-![The Linux-built app running on Xbox, showing successful zlib and Luau checks](docs/assets/xbox-luau.png)
+![The Linux-built app running on Xbox, with a Direct3D cube and successful zlib and Luau checks](docs/assets/xbox-demo.png)
 
 ## Try it
 
@@ -79,11 +80,13 @@ to add ports.
 | `nix build .#toolchain` | Standalone build and packaging tools |
 | `nix build .#luau-xbox` | Static Luau VM and bytecode compiler |
 | `nix build .#zlib-xbox` | Static zlib and headers |
+| `nix build .#cube-shaders` | HLSL compiled into embedded shader bytecode |
 | `nix build .#xbox-cc` | Wrapped Clang cross compiler and binutils |
 
 ## What's working—and what's next
 
-Verified on Xbox Series X: the C++/WinRT app launches, zlib round-trips data,
+Verified on Xbox Series X: the C++/WinRT app launches, Direct3D renders an
+animated cube on the hardware device, zlib round-trips data,
 and Luau compiles and executes a script with three native callbacks. The script
 returns **health = 46**, which drives the on-screen health bar. Wine checks also
 cover C++ exception unwinding and a port of GNU Hello.

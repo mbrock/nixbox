@@ -185,7 +185,7 @@ let
     text = ''
       export WINEPREFIX="''${WINEPREFIX:-''${XDG_CACHE_HOME:-$HOME/.cache}/xbox-uwp/wine}"
       export WINEARCH=wow64 WINEDEBUG=-all
-      export WINEDLLOVERRIDES="mscoree,mshtml=;msxml6=n,b"
+      export WINEDLLOVERRIDES="''${WINEDLLOVERRIDES:-mscoree,mshtml=;msxml6=n,b}"
       if [[ "''${UWP_DISPLAY_READY:-}" != 1 ]]; then
         export UWP_DISPLAY_READY=1
         exec uwp-with-display "$0" "$@"
@@ -212,6 +212,19 @@ let
     ]
     ++ runtime;
   };
+  shaders = pkgs.runCommand "nixbox-cube-shaders" { nativeBuildInputs = [ tools ]; } ''
+    export WINEPREFIX="$TMPDIR/wine"
+    export WINEDLLOVERRIDES="d3dcompiler_47=n;mscoree,mshtml=;msxml6=n,b"
+    trap 'wineserver -k || true' EXIT
+    mkdir -p "$out/include"
+    cp ${../example/Shaders/Cube.hlsl} Cube.hlsl
+    fxc="${sdk}/Windows Kits/10/bin/10.0.22621.0/x64/fxc.exe"
+    uwp-with-wine wine "$fxc" /nologo /O3 /T vs_5_0 /E vertexMain \
+      /Fh CubeVertexShader.h /Vn cubeVertexShader Cube.hlsl
+    uwp-with-wine wine "$fxc" /nologo /O3 /T ps_5_0 /E pixelMain \
+      /Fh CubePixelShader.h /Vn cubePixelShader Cube.hlsl
+    cp CubeVertexShader.h CubePixelShader.h "$out/include/"
+  '';
   hello =
     pkgs.runCommand "hello-uwp"
       {
@@ -225,7 +238,8 @@ let
           --config Release --no-restore --out "$TMPDIR/layout" \
           --property ZlibIncludeDir=${lib.getDev pkgsXbox.zlib}/include \
           --property ZlibLibrary=${lib.getLib pkgsXbox.zlib}/lib/zs.lib \
-          --property LuauRoot=${pkgsXbox.luau}
+          --property LuauRoot=${pkgsXbox.luau} \
+          --property ShaderIncludeDir=${shaders}/include
         openappx validate --root "$TMPDIR/layout"
         openappx pack --root "$TMPDIR/layout" --out "$out/hello-uwp.msix"
         cp -a "$TMPDIR/layout" "$out/layout"
@@ -233,12 +247,13 @@ let
       '';
 in
 {
-  inherit tools hello;
+  inherit tools hello shaders;
   UWP_XWIN_ROOT = xwinRoot;
   UWP_SDK_ROOT = sdk;
   UWP_CPPWINRT_EXE = "${cppwinrt}/bin/cppwinrt";
   packages = {
     inherit openappx cppwinrt sdk;
+    cube-shaders = shaders;
     xwin-sdk = xwinRoot;
     msxml6 = msxml;
     uwp-crossbuild = uwp;
@@ -260,6 +275,7 @@ in
           withDisplay
           withWine
           tools
+          shaders
           pkgsXbox.zlib
           pkgsXbox.hello
           pkgsXbox.luau

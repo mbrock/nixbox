@@ -38,7 +38,8 @@ For a faster iteration outside the Nix sandbox:
   --out "$PWD/build-output/incremental-layout" \
   --property ZlibIncludeDir="$XBOX_ZLIB_INCLUDE_DIR" \
   --property ZlibLibrary="$XBOX_ZLIB_LIBRARY" \
-  --property LuauRoot="$XBOX_LUAU_ROOT"'
+  --property LuauRoot="$XBOX_LUAU_ROOT" \
+  --property ShaderIncludeDir="$XBOX_SHADER_INCLUDE_DIR"'
 ```
 
 This writes a separate layout; the standard signing/deployment scripts use
@@ -52,6 +53,22 @@ fresh, disposable prefix in their build directory.
 
 Nix flakes use tracked source files. Stage new files with `git add` before
 building, so they become part of the flake source.
+
+## Direct3D view
+
+The sample embeds a Direct3D 11 composition swap chain in a programmatically
+created XAML `SwapChainPanel`. [D3DView.cpp](../example/D3DView.cpp) owns the
+hardware device, depth buffer, mesh, and swap chain. It renders a lit, rotating
+cube on XAML frame callbacks on the UI thread, stops callbacks when unloaded,
+and resizes buffers for panel size and composition-scale changes. A lost device
+at presentation is recreated; other graphics failures appear in the status text.
+
+[Cube.hlsl](../example/Shaders/Cube.hlsl) contains the vertex and pixel shaders.
+Nix compiles them with the pinned SDK's `fxc` under Wine, generating headers
+with embedded Shader Model 5 bytecode. The console runs only the compiled
+shaders; it needs no runtime shader compiler. `nix build .#cube-shaders` builds
+the headers separately, and `XBOX_SHADER_INCLUDE_DIR` supplies their location
+for incremental builds. Editing HLSL and rerunning `./build` recompiles it.
 
 ## Signing keys
 
@@ -103,7 +120,9 @@ returned health.
 LLVM 23.1.0 passed the full flake build checks, GNU Hello's six Wine behavior
 checks, C++ exception unwinding with destructor cleanup, and the Luau gameplay
 smoke test. The rebuilt app was signed, installed, and launched on Xbox Series X.
-Its screenshot shows successful zlib compression and **health = 46, native
+The Direct3D addition was also built, deployed, and observed rendering on the
+hardware device. Two console screenshots show different cube orientations.
+The screenshot shows successful zlib compression and **health = 46, native
 callbacks = 3 — PASS**.
 
 Earlier checks also exercised relocated workspaces, fresh Wine prefixes, and
