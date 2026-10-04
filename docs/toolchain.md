@@ -46,10 +46,17 @@ and direct build requests fail at evaluation. Native Linux packages are unaffect
 | zlib 1.3.2 | Upstream CMake build; static `zs.lib`; corrected pkg-config paths | AMD64 COFF archive check and Xbox compression round-trip |
 | Luau 0.738 | VM and bytecode compiler only; static CRT; availability-based unwinder selection | Wine gameplay test and real Xbox script execution |
 | GNU Hello 2.12.3 | UWP-compatible program name, getopt, handle, and file-opening code; NLS disabled | Six behavior checks under Wine |
+| SDL3 3.4.16 | Nixpkgs recipe overridden with the UWP fork and C++/WinRT patch; static CRT and library | SDL template build and real Xbox rendering/gamepad input |
 
 [nix/luau.nix](../nix/luau.nix) inherits Nixpkgs' native CMake. It builds the VM
 and compiler targets and installs their libraries and headers. CLI tools, native
 code generation, and upstream executable tests are omitted.
+
+[nix/sdl3.nix](../nix/sdl3.nix) uses Nixpkgs' feature switches and `overrideAttrs`,
+not a separate derivation. Upstream SDL no longer includes UWP, so the source
+remains pinned to XboxEmulationHub's fork. The override disables desktop-only
+features and executable tests, and installs CMake metadata into the development
+output alongside the headers and pkg-config file.
 
 [nix/hello-uwp.patch](../nix/hello-uwp.patch) contains GNU Hello's portability
 fixes. The [configure experiment notes](../nix/experiments/hello-configure.txt)

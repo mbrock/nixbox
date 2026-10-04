@@ -49,6 +49,9 @@ underneath) and gamepad input, built with Meson against `pkgsXbox.SDL3`
 `pkgsXbox.SDL3` is XboxEmulationHub's
 [SDL3-uwp](https://github.com/XboxEmulationHub/SDL3-uwp) fork, which keeps
 SDL's UWP backend, with [nix/sdl3-uwp.patch](../nix/sdl3-uwp.patch) on top.
+The package [overrides Nixpkgs' SDL3 recipe](../nix/sdl3.nix), retaining its
+native build tools and split library/development outputs; `pkgsXbox.sdl3`
+and `pkgsXbox.SDL3` refer to the same package.
 That backend is C++/CX, which only MSVC compiles; the patch ports it to
 standard C++/WinRT, keeps SDL's registry lookups out of the app container,
 and enables the Windows.Gaming.Input gamepad driver, the only one a UWP app

@@ -70,8 +70,9 @@ let
     llvmPackages = prev.${llvmPackageSet}.overrideScope (llvmFinal: llvmPrev: {
       libunwind = unsupportedUnwinder llvmPrev.libunwind;
     });
-    # SDL3 with a C++/WinRT UWP backend, replacing Nixpkgs' desktop recipe.
-    SDL3 = final.callPackage ./sdl3.nix { };
+    # Reuse Nixpkgs' SDL3 recipe with the fork's C++/WinRT UWP backend.
+    sdl3 = final.callPackage ./sdl3.nix { sdl3 = prev.sdl3; };
+    SDL3 = final.sdl3;
     luau = import ./luau.nix {
       inherit lib;
       inherit (final) stdenv;
