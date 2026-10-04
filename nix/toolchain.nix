@@ -239,7 +239,8 @@ let
           --property ZlibIncludeDir=${lib.getDev pkgsXbox.zlib}/include \
           --property ZlibLibrary=${lib.getLib pkgsXbox.zlib}/lib/zs.lib \
           --property LuauRoot=${pkgsXbox.luau} \
-          --property ShaderIncludeDir=${shaders}/include
+          --property ShaderIncludeDir=${shaders}/include \
+          --property DirectXHeadersIncludeDir=${pkgs.directx-headers}/include/directx
         openappx validate --root "$TMPDIR/layout"
         openappx pack --root "$TMPDIR/layout" --out "$out/hello-uwp.msix"
         cp -a "$TMPDIR/layout" "$out/layout"

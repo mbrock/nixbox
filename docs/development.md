@@ -39,7 +39,8 @@ For a faster iteration outside the Nix sandbox:
   --property ZlibIncludeDir="$XBOX_ZLIB_INCLUDE_DIR" \
   --property ZlibLibrary="$XBOX_ZLIB_LIBRARY" \
   --property LuauRoot="$XBOX_LUAU_ROOT" \
-  --property ShaderIncludeDir="$XBOX_SHADER_INCLUDE_DIR"'
+  --property ShaderIncludeDir="$XBOX_SHADER_INCLUDE_DIR" \
+  --property DirectXHeadersIncludeDir="$XBOX_DIRECTX_HEADERS_INCLUDE_DIR"'
 ```
 
 This writes a separate layout; the standard signing/deployment scripts use
@@ -60,7 +61,10 @@ The sample embeds a Direct3D 12 composition swap chain in a programmatically
 created XAML `SwapChainPanel`. [D3DView.cpp](../example/D3DView.cpp) owns the
 hardware device, command queue, depth buffer, mesh, and swap chain, with one
 command allocator per back buffer and a fence that keeps the CPU from reusing
-an allocator the GPU is still reading. It renders a lit, rotating
+an allocator the GPU is still reading. The `d3d12.h` and `d3dx12.h` helper headers
+come from Nixpkgs' `directx-headers` (Microsoft's DirectX-Headers), not the
+Windows SDK, which has never shipped `d3dx12.h`; `XBOX_DIRECTX_HEADERS_INCLUDE_DIR`
+points incremental builds at them. It renders a lit, rotating
 cube on XAML frame callbacks on the UI thread, stops callbacks when unloaded,
 and resizes buffers for panel size and composition-scale changes. A lost device
 at presentation is recreated; other graphics failures appear in the status text.

@@ -74,6 +74,7 @@
         XBOX_ZLIB_LIBRARY = "${pkgs.lib.getLib pkgsXbox.zlib}/lib/zs.lib";
         XBOX_LUAU_ROOT = pkgsXbox.luau;
         XBOX_SHADER_INCLUDE_DIR = "${toolchain.shaders}/include";
+        XBOX_DIRECTX_HEADERS_INCLUDE_DIR = "${pkgs.directx-headers}/include/directx";
         XBOX_CXX_HEADERS = xbox.cxxHeaders;
         WINEARCH = "wow64";
         WINEDEBUG = "-all";

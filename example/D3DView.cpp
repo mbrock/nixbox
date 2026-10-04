@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "D3DView.h"
 
+#include <d3dx12.h>
 #include <windows.ui.xaml.media.dxinterop.h>
 #include <CubeVertexShader.h>
 #include <CubePixelShader.h>
@@ -39,53 +40,20 @@ constexpr uint16_t indices[] = {
 constexpr DXGI_FORMAT BackBufferFormat = DXGI_FORMAT_B8G8R8A8_UNORM;
 constexpr DXGI_FORMAT DepthFormat = DXGI_FORMAT_D32_FLOAT;
 
-D3D12_RESOURCE_DESC TextureDesc(UINT64 width, UINT height, DXGI_FORMAT format,
-                                D3D12_RESOURCE_FLAGS flags) {
-    D3D12_RESOURCE_DESC desc{};
-    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    desc.Width = width;
-    desc.Height = height;
-    desc.DepthOrArraySize = 1;
-    desc.MipLevels = 1;
-    desc.Format = format;
-    desc.SampleDesc.Count = 1;
-    desc.Flags = flags;
-    return desc;
-}
-
 // The mesh never changes, so it stays in an upload heap the GPU reads directly
 // rather than being copied into a default heap.
 com_ptr<ID3D12Resource> UploadBuffer(ID3D12Device* device, void const* data, UINT64 size) {
-    D3D12_HEAP_PROPERTIES heap{};
-    heap.Type = D3D12_HEAP_TYPE_UPLOAD;
-    D3D12_RESOURCE_DESC desc{};
-    desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    desc.Width = size;
-    desc.Height = 1;
-    desc.DepthOrArraySize = 1;
-    desc.MipLevels = 1;
-    desc.SampleDesc.Count = 1;
-    desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_UPLOAD);
+    const auto desc = CD3DX12_RESOURCE_DESC::Buffer(size);
     com_ptr<ID3D12Resource> buffer;
     check_hresult(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, __uuidof(ID3D12Resource), buffer.put_void()));
     void* mapped = nullptr;
-    const D3D12_RANGE noRead{0, 0};
+    const CD3DX12_RANGE noRead(0, 0);
     check_hresult(buffer->Map(0, &noRead, &mapped));
     std::memcpy(mapped, data, size);
     buffer->Unmap(0, nullptr);
     return buffer;
-}
-
-D3D12_RESOURCE_BARRIER Transition(ID3D12Resource* resource, D3D12_RESOURCE_STATES before,
-                                  D3D12_RESOURCE_STATES after) {
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = resource;
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    barrier.Transition.StateBefore = before;
-    barrier.Transition.StateAfter = after;
-    return barrier;
 }
 }
 
@@ -150,15 +118,10 @@ void D3DView::CreateDevice() {
         m_dsvHeap.put_void()));
 
     // The shader's Scene cbuffer (b0) is fed as four root constants per draw.
-    D3D12_ROOT_PARAMETER scene{};
-    scene.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-    scene.Constants.ShaderRegister = 0;
-    scene.Constants.Num32BitValues = 4;
-    scene.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-    D3D12_ROOT_SIGNATURE_DESC root{};
-    root.NumParameters = 1;
-    root.pParameters = &scene;
-    root.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+    CD3DX12_ROOT_PARAMETER scene;
+    scene.InitAsConstants(4, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+    const CD3DX12_ROOT_SIGNATURE_DESC root(1, &scene, 0, nullptr,
+        D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
     com_ptr<ID3DBlob> signature, error;
     check_hresult(D3D12SerializeRootSignature(&root, D3D_ROOT_SIGNATURE_VERSION_1,
         signature.put(), error.put()));
@@ -174,14 +137,11 @@ void D3DView::CreateDevice() {
     pipeline.pRootSignature = m_rootSignature.get();
     pipeline.VS = {cubeVertexShader, sizeof(cubeVertexShader)};
     pipeline.PS = {cubePixelShader, sizeof(cubePixelShader)};
-    pipeline.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    pipeline.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     pipeline.SampleMask = UINT_MAX;
-    pipeline.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+    pipeline.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     pipeline.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-    pipeline.RasterizerState.DepthClipEnable = TRUE;
-    pipeline.DepthStencilState.DepthEnable = TRUE;
-    pipeline.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-    pipeline.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+    pipeline.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
     pipeline.InputLayout = {layout, ARRAYSIZE(layout)};
     pipeline.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     pipeline.NumRenderTargets = 1;
@@ -231,26 +191,23 @@ void D3DView::Resize() {
     DXGI_MATRIX_3X2_F inverseScale{1 / scaleX, 0, 0, 1 / scaleY, 0, 0};
     check_hresult(m_swapChain->SetMatrixTransform(&inverseScale));
 
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
     for (UINT i = 0; i < FrameCount; ++i) {
         check_hresult(m_swapChain->GetBuffer(i, __uuidof(ID3D12Resource),
             m_renderTargets[i].put_void()));
         m_device->CreateRenderTargetView(m_renderTargets[i].get(), nullptr, rtv);
-        rtv.ptr += m_rtvStride;
+        rtv.Offset(1, m_rtvStride);
     }
-    D3D12_HEAP_PROPERTIES heap{};
-    heap.Type = D3D12_HEAP_TYPE_DEFAULT;
-    const auto depth = TextureDesc(width, height, DepthFormat,
+    const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_DEFAULT);
+    const auto depth = CD3DX12_RESOURCE_DESC::Tex2D(DepthFormat, width, height, 1, 1, 1, 0,
         D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL | D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE);
-    D3D12_CLEAR_VALUE clear{};
-    clear.Format = DepthFormat;
-    clear.DepthStencil.Depth = 1;
+    const CD3DX12_CLEAR_VALUE clear(DepthFormat, 1, 0);
     check_hresult(m_device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &depth,
         D3D12_RESOURCE_STATE_DEPTH_WRITE, &clear, __uuidof(ID3D12Resource), m_depth.put_void()));
     m_device->CreateDepthStencilView(m_depth.get(), nullptr,
         m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-    m_viewport = {0, 0, static_cast<float>(width), static_cast<float>(height), 0, 1};
-    m_scissor = {0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
+    m_viewport = CD3DX12_VIEWPORT(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height));
+    m_scissor = CD3DX12_RECT(0, 0, static_cast<LONG>(width), static_cast<LONG>(height));
     m_resize = false;
 }
 
@@ -263,11 +220,11 @@ void D3DView::Draw(float angle) {
     check_hresult(m_commands->Reset(allocator, m_pipeline.get()));
 
     auto* target = m_renderTargets[m_frame].get();
-    auto barrier = Transition(target, D3D12_RESOURCE_STATE_PRESENT,
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(target, D3D12_RESOURCE_STATE_PRESENT,
         D3D12_RESOURCE_STATE_RENDER_TARGET);
     m_commands->ResourceBarrier(1, &barrier);
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
-    rtv.ptr += m_frame * m_rtvStride;
+    const CD3DX12_CPU_DESCRIPTOR_HANDLE rtv(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
+        m_frame, m_rtvStride);
     const D3D12_CPU_DESCRIPTOR_HANDLE dsv = m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
     const float background[] = {0.025f, 0.045f, 0.075f, 1};
     m_commands->ClearRenderTargetView(rtv, background, 0, nullptr);
@@ -282,7 +239,8 @@ void D3DView::Draw(float angle) {
     m_commands->IASetVertexBuffers(0, 1, &m_vertexView);
     m_commands->IASetIndexBuffer(&m_indexView);
     m_commands->DrawIndexedInstanced(ARRAYSIZE(indices), 1, 0, 0, 0);
-    barrier = Transition(target, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    barrier = CD3DX12_RESOURCE_BARRIER::Transition(target, D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_PRESENT);
     m_commands->ResourceBarrier(1, &barrier);
     check_hresult(m_commands->Close());
     ID3D12CommandList* lists[] = {m_commands.get()};

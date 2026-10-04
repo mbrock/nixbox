@@ -39,7 +39,9 @@
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ZlibIncludeDir);$(LuauRoot)/include;$(ShaderIncludeDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <!-- DirectX-Headers comes first, so d3d12.h and d3dx12.h are the same,
+           newer release rather than d3dx12.h on top of the SDK's d3d12.h. -->
+      <AdditionalIncludeDirectories>$(DirectXHeadersIncludeDir);$(ProjectDir);$(ZlibIncludeDir);$(LuauRoot)/include;$(ShaderIncludeDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <!-- Visual Studio's default. Overridden to c++20 by this toolchain:
            C++/WinRT under clang needs <coroutine>, README gotcha 1. -->
       <LanguageStandard>stdcpp17</LanguageStandard>
