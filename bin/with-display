@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+display_file=$(mktemp)
+auth_file=$(mktemp)
+log_file=$(mktemp)
+cookie=$(openssl rand -hex 16)
+xauth -f "$auth_file" add localhost:0 MIT-MAGIC-COOKIE-1 "$cookie"
+Xvfb -displayfd 3 -screen 0 1280x720x24 -nolisten unix -nolisten local \
+  -listen tcp -auth "$auth_file" 3>"$display_file" >/dev/null 2>"$log_file" &
+display_pid=$!
+trap 'kill "$display_pid" 2>/dev/null || true; rm -f "$display_file" "$auth_file" "$log_file"' EXIT
+for ((i=0; i<100; i++)); do
+  [[ -s "$display_file" ]] && break
+  if ! kill -0 "$display_pid" 2>/dev/null; then
+    cat "$log_file" >&2
+    exit 1
+  fi
+  sleep 0.1
+done
+if [[ ! -s "$display_file" ]]; then
+  cat "$log_file" >&2
+  exit 1
+fi
+DISPLAY=localhost:$(cat "$display_file")
+export DISPLAY
+export XAUTHORITY="$auth_file"
+xauth -f "$auth_file" add "$DISPLAY" MIT-MAGIC-COOKIE-1 "$cookie"
+"$@"

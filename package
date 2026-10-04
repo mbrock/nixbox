@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+cd "$root"
+cert_dir=${UWP_CERT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/uwp-crossbuild}
+mkdir -p "$cert_dir"
+if [[ ! -f "$cert_dir/dev.pfx" ]]; then
+  (umask 077; openappx sign --make-test-cert 'CN=uwp-crossbuild-dev' --cert-out "$cert_dir/dev")
+fi
+openappx validate --root build-output/hello-layout
+openappx pack --root build-output/hello-layout --out build-output/hello-uwp.msix
+openappx sign --package build-output/hello-uwp.msix --pfx "$cert_dir/dev.pfx"
+openappx inspect --package build-output/hello-uwp.msix

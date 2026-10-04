@@ -1,0 +1,132 @@
+[
+  {
+    "name": "15bc5316e373960d82abc253bceaa25d.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/15bc5316e373960d82abc253bceaa25d.cab",
+    "hash": "sha256-AFvdnhdw31ASv7iwb/niANYQWSJT5zFU1Rm7l9+fizE="
+  },
+  {
+    "name": "1a296530f0182ff1e94f088c27d05da0.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/1a296530f0182ff1e94f088c27d05da0.cab",
+    "hash": "sha256-3mbih5tjLBvNWkTnbvmXDO5nAsaGeMeHoZ+/BHK7N6w="
+  },
+  {
+    "name": "2630bae9681db6a9f6722366f47d055c.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/2630bae9681db6a9f6722366f47d055c.cab",
+    "hash": "sha256-Ed1UtbGuHI/QTtp/AL91TOUGWlgVNAEx0ZVeQGZTJUY="
+  },
+  {
+    "name": "26ea25236f12b23db661acf268a70cfa.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/26ea25236f12b23db661acf268a70cfa.cab",
+    "hash": "sha256-GS4HvEtBSvw3/pnaHClZBG6BPWRQ+J0QGu6MQEyU3/Q="
+  },
+  {
+    "name": "2a30b5d1115d515c6ddd8cd6b5173835.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/2a30b5d1115d515c6ddd8cd6b5173835.cab",
+    "hash": "sha256-UGBz4PTbLXgfw2Ob4myEOljNJUD5T67Efv7ZryPeIi0="
+  },
+  {
+    "name": "4a4c678668584fc994ead5b99ccf7f03.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/4a4c678668584fc994ead5b99ccf7f03.cab",
+    "hash": "sha256-epPYfF0YIe2Z31KPn9vSAzEJFLZ2xuhhkChe83Dj49I="
+  },
+  {
+    "name": "4ec14c5368b7642563c070cd168960a8.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/4ec14c5368b7642563c070cd168960a8.cab",
+    "hash": "sha256-IxzrI6QduUJsV7LmqRHhj79PqoZgX6Hlz2zDuDyem4c="
+  },
+  {
+    "name": "559dbc3a49a69c6adf60b1c87b4df71b.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/559dbc3a49a69c6adf60b1c87b4df71b.cab",
+    "hash": "sha256-iEZQdU0h7+4NfgkmdgX6qhRb4zNfiiqQ3Roq8uxqD1A="
+  },
+  {
+    "name": "61d57a7a82309cd161a854a6f4619e52.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/61d57a7a82309cd161a854a6f4619e52.cab",
+    "hash": "sha256-rj7nzxQSzhUs9BJwj527hENQ/isq7nqiUDYSAgLrs1g="
+  },
+  {
+    "name": "68de71e3e2fb9941ee5b7c77500c0508.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/68de71e3e2fb9941ee5b7c77500c0508.cab",
+    "hash": "sha256-d3NLpPjfweCqVRyz1GDP/lkLlRjZTF0zm5YIT/Tor8U="
+  },
+  {
+    "name": "69661e20556b3ca9456b946c2c881ddd.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/69661e20556b3ca9456b946c2c881ddd.cab",
+    "hash": "sha256-0KcDyevNheOK4NVQ+eT1quImK7RJW579YnfLHjjl4AI="
+  },
+  {
+    "name": "6b5a91701fdb98ac8bc4af6e238e0390.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/6b5a91701fdb98ac8bc4af6e238e0390.cab",
+    "hash": "sha256-7T/QL2/cjsQatpq51yW7oWgSll3zv0N9bUg1eEjyiy8="
+  },
+  {
+    "name": "766c0ffd568bbb31bf7fb6793383e24a.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/766c0ffd568bbb31bf7fb6793383e24a.cab",
+    "hash": "sha256-kboXfAA9JKPqK2cIKxW45g81T3ZcZsmxqze9m6ABqLU="
+  },
+  {
+    "name": "8125ee239710f33ea485965f76fae646.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/8125ee239710f33ea485965f76fae646.cab",
+    "hash": "sha256-//5dzR+/hek31g8KZaS0QdobWVYC7NldVwgWwZdREBU="
+  },
+  {
+    "name": "Windows SDK Facade Windows WinMD Versioned-x86_en-us.msi",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/Windows%20SDK%20Facade%20Windows%20WinMD%20Versioned-x86_en-us.msi",
+    "hash": "sha256-qkYw9irMacyrNDkb+BeplfivSp2bwR0x08751XT2P+g="
+  },
+  {
+    "name": "Windows SDK for Windows Store Apps Contracts-x86_en-us.msi",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/Windows%20SDK%20for%20Windows%20Store%20Apps%20Contracts-x86_en-us.msi",
+    "hash": "sha256-ncg2Jxvx9BJ6NACItD382N3HxV+3btBXhYDunM6nOp0="
+  },
+  {
+    "name": "Windows SDK for Windows Store Apps Headers-x86_en-us.msi",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/Windows%20SDK%20for%20Windows%20Store%20Apps%20Headers-x86_en-us.msi",
+    "hash": "sha256-s83yhmj8xvCRAxJdpQCHoG2uMCu5+e44ruYkblnwu9A="
+  },
+  {
+    "name": "Windows SDK for Windows Store Apps Tools-x86_en-us.msi",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/Windows%20SDK%20for%20Windows%20Store%20Apps%20Tools-x86_en-us.msi",
+    "hash": "sha256-Rhrpa1WW56CgTisF9pZbtc6xGtfh16flEcru3LmpZks="
+  },
+  {
+    "name": "b82881a61b7477bd4eb5de2cd5037fe2.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/b82881a61b7477bd4eb5de2cd5037fe2.cab",
+    "hash": "sha256-WEiynCJ2EhoKxGmI8rSJPCEBcgjqBIO+o+AjVL0z/bU="
+  },
+  {
+    "name": "c0aa6d435b0851bf34365aadabd0c20f.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/c0aa6d435b0851bf34365aadabd0c20f.cab",
+    "hash": "sha256-f3Zbq33gZzf2g9UbNt2hxg5iwaQVirrd9fZqRRbTXVM="
+  },
+  {
+    "name": "c1c7e442409c0adbf81ae43aa0e4351f.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/c1c7e442409c0adbf81ae43aa0e4351f.cab",
+    "hash": "sha256-O6iheGqSlQ0j9AFYfdG6z6AzEMBs73rNw+w4KX9/TqU="
+  },
+  {
+    "name": "dcfb1aa345e349091a44e86ce1766566.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/dcfb1aa345e349091a44e86ce1766566.cab",
+    "hash": "sha256-XWxkd+cXBUaGuZZUMTBh+5+SUY7Ek7XdOfEa/wklsbs="
+  },
+  {
+    "name": "e072b3b3d3164e26b63338dce51862a7.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/e072b3b3d3164e26b63338dce51862a7.cab",
+    "hash": "sha256-HbIArz0qLGpIZftDaM8d1k13O2+Pc5tsYeLNFlNkv9Y="
+  },
+  {
+    "name": "e3d1b35aecfccda1b4af6fe5988ac4be.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/e3d1b35aecfccda1b4af6fe5988ac4be.cab",
+    "hash": "sha256-9HfQA4/joA0NNggSz/KGiWuncgkZfOKY1aKjc7QTLeU="
+  },
+  {
+    "name": "ec0637c03f99046936d32d51e13a392a.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/ec0637c03f99046936d32d51e13a392a.cab",
+    "hash": "sha256-tJ4rjXutwfzoQ1tT33dTtsU+Duel2E4xNUiJmB+yfk4="
+  },
+  {
+    "name": "f105a73f98cfc88c7b64d8f7b39a474c.cab",
+    "url": "https://download.microsoft.com/download/7/9/6/7962e9ce-cd69-4574-978c-1202654bd729/windowssdk/Installers/f105a73f98cfc88c7b64d8f7b39a474c.cab",
+    "hash": "sha256-UnK9kcZSsp130XKPD/u6WzUWzfN309cG9NG28bqH9oE="
+  }
+]

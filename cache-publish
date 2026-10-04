@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Publish the complete toolchain closure to the authenticated personal cache.
+set -euo pipefail
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+cache_dir=${UWP_NIX_CACHE_DIR:-/var/www/xbox-nix-cache}
+key=${UWP_NIX_CACHE_KEY:-${XDG_CONFIG_HOME:-$HOME/.config}/xbox-nix-cache/cache.secret}
+[[ -r "$key" ]] || { echo "Missing cache signing key: $key" >&2; exit 1; }
+cache_netrc=${UWP_NIX_CACHE_NETRC:-${XDG_CONFIG_HOME:-$HOME/.config}/xbox-nix-cache/netrc}
+nix_options=(--accept-flake-config)
+if [[ -r "$cache_netrc" ]]; then
+  nix_options+=(--option netrc-file "$cache_netrc")
+else
+  nix_options+=(--option extra-substituters "")
+fi
+roots=$(nix build "${nix_options[@]}" "$root#cache-roots" --no-link --print-out-paths)
+mapfile -t paths < <(nix-store --query --references "$roots")
+nix store sign --recursive --key-file "$key" "${paths[@]}"
+nix copy --to "file://$cache_dir?compression=zstd&parallel-compression=true" "${paths[@]}"

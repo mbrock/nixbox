@@ -1,0 +1,192 @@
+[
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.Headers.base.vsix",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/c610cd8c-801b-44b8-a80a-82cc382aeb43/852382a9aa73502b7849c1bcadfb603ba7175c4e8b60e6aba03c7de711d4ece5/Microsoft.VC.14.44.17.14.CRT.Headers.base.vsix",
+    "hash": "sha256-hSOCqapzUCt4ScG8rftgO6cXXE6LYOaroDx95xHU7OU="
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x64.Desktop.base.vsix",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/67cf767c-5e71-47c2-a54a-cd5631e28942/f01f701a7bcd9587a340898c851424f6a52bb913a70c185ff0d5bf0288c5831a/Microsoft.VC.14.44.17.14.CRT.x64.Desktop.base.vsix",
+    "hash": "sha256-8B9wGnvNlYejQImMhRQk9qUruROnDBhf8NW/AojFgxo="
+  },
+  {
+    "path": "Microsoft.VC.14.44.17.14.CRT.x64.Store.base.vsix",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/67cf767c-5e71-47c2-a54a-cd5631e28942/9135b03c0df53c7a0aa9bef7230a1c2ff4263a0ee7baa7e419d034f484f6bb56/Microsoft.VC.14.44.17.14.CRT.x64.Store.base.vsix",
+    "hash": "sha256-kTWwPA31PHoKqb73IwocL/QmOg7nuqfkGdA09IT2u1Y="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_headers/07a57cdb41ba28cced14005f087267be.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/2487cb3527b23ee3c6f081e01c2a1bc0/07a57cdb41ba28cced14005f087267be.cab",
+    "hash": "sha256-HzUESfb1mKTZsxbmmtm4RduOjZGbizT1wHsyWY9t4xk="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_headers/2e876dd22fa5e6785f137e3422dd50ec.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/2f5955d08b28c63142f927aa3696c15a/2e876dd22fa5e6785f137e3422dd50ec.cab",
+    "hash": "sha256-vUkMLaO1g3Jh1DeRoC6ju2rvHeeH9SvsXn3WOL+3f1E="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_headers/4fe4c8b88812f5339018c0eef95acdb9.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/9992f4e9621a59b8bd9a57cd62e0d567/4fe4c8b88812f5339018c0eef95acdb9.cab",
+    "hash": "sha256-yt1hyqsAta0+9EnvtU+KexpDp8+4XzIbVEyleLFOF5s="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_headers.msi",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/7fad2c686fb58ea9e6dc0308a2df142f/windows%20sdk%20desktop%20headers%20x86-x86_en-us.msi",
+    "hash": "sha256-8eUVn+uUjOkKgdzGpCfd6ERhAjDLbteH411CLeUnpfg="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_libs_x86_64/58314d0646d7e1a25e97c902166c3155.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/cb954f8bc3015e25cfd985a5fff3452a/58314d0646d7e1a25e97c902166c3155.cab",
+    "hash": "sha256-7CCaIkybLTHzQJII0w9aYzXFUhetOE1iEsgzrIM2Dro="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_libs_x86_64.msi",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/a7dce16da158fe456395566e2dafd23d/windows%20sdk%20desktop%20libs%20x64-x86_en-us.msi",
+    "hash": "sha256-LpVsoc8XgAsPmBGmJJuUXwRa3fGO6F/+euqZ7GwnJDo="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_headers/766c0ffd568bbb31bf7fb6793383e24a.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b4a6e43a0c35ad8d4e8957eb581443ec/766c0ffd568bbb31bf7fb6793383e24a.cab",
+    "hash": "sha256-xZD4FvO7FaeaC/gVypQq7sSjbAj9Zvo1okPIa0+LrH0="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_headers/8125ee239710f33ea485965f76fae646.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/e97c5af6189039047f84fbb140167fc6/8125ee239710f33ea485965f76fae646.cab",
+    "hash": "sha256-r8pioeMvKPrTR/dhDG72Y1BqeY23isTkz1Ra6qTF0dM="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_headers/c0aa6d435b0851bf34365aadabd0c20f.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/6699951ca96b8696e87c51e6b45d524a/c0aa6d435b0851bf34365aadabd0c20f.cab",
+    "hash": "sha256-ueBdd8TnGdTzlLWmYyjPst8qgJFHhVRe6wSaafyxHTw="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_headers.msi",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/06062c286c5533d4d2c47e613ae44793/windows%20sdk%20for%20windows%20store%20apps%20headers-x86_en-us.msi",
+    "hash": "sha256-yfeK4+cw6heJo3AB4gSpcAmdKsxVXMU3+0XqC7I7NHw="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_headers_onecoreuap/e89e3dcbb016928c7e426238337d69eb.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/e37c4e19cf7a02f7b6f243de3316c9ea/e89e3dcbb016928c7e426238337d69eb.cab",
+    "hash": "sha256-Tl8DRtWfquN0LHnUjfdPIhsgLaNH9XUcw+UxVpQTaPE="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_headers_onecoreuap.msi",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/95de969f19c09fe411b779c2e2f06f0d/windows%20sdk%20for%20windows%20store%20apps%20headers%20onecoreuap-x86_en-us.msi",
+    "hash": "sha256-vl7hPMyYuHIRtPNoaXKwD6FvIPJm/p3FVy1i8AHgVHw="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_libs/05047a45609f311645eebcac2739fc4c.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/67a9b258981565b78c46484efbed6945/05047a45609f311645eebcac2739fc4c.cab",
+    "hash": "sha256-kCAD5Jdse8S82p8x8dg1uAciNVMkEncPZrC8nwiCy34="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_libs/13d68b8a7b6678a368e2d13ff4027521.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/2160d8b73fe2e4fea3e2097084a081cd/13d68b8a7b6678a368e2d13ff4027521.cab",
+    "hash": "sha256-Cybt4tIupTHZISad//zRTMcdaTLKwPJyD87DcHkoZkM="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_libs/463ad1b0783ebda908fd6c16a4abfe93.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/637a623c788980d4a7edf6d84e34ed70/463ad1b0783ebda908fd6c16a4abfe93.cab",
+    "hash": "sha256-Q8QFWQmKLB7772rxb5ekT9gLO7n+iuEXxOb58/hSuOg="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_libs/5a22e5cde814b041749fb271547f4dd5.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/03cfd7ea3b3116d5d32d11df101dea24/5a22e5cde814b041749fb271547f4dd5.cab",
+    "hash": "sha256-V+fjCUE9BbeBrnbRtcVNx6/zULakYJIPHzWOgAOqvfs="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_libs/e10768bb6e9d0ea730280336b697da66.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/b2915dcb648d1087f4a5ef20f17c9825/e10768bb6e9d0ea730280336b697da66.cab",
+    "hash": "sha256-RuIVeKTPzjvW5OrMELkhIaglzkQ8wvbM6EsH43udIbw="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_libs/f9b24c8280986c0683fbceca5326d806.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/66f36d1686d2dde0cfa99a5160a9571d/f9b24c8280986c0683fbceca5326d806.cab",
+    "hash": "sha256-FU9KJOwi6gyTJwnw4aLEQ5RrQsFCkaSaKAq06g6qUE0="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_store_libs.msi",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/079ca63878193e064d8aa000670f0db3/windows%20sdk%20for%20windows%20store%20apps%20libs-x86_en-us.msi",
+    "hash": "sha256-E4FTXS9rGJSgktpn+Kj7BIpN/oBgznWzJ1r/qBsCWG4="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_uap_headers/f2e05dfd38ed343d3de77209cf3ecdae.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/107cd9d9170325d1ded9e4cc47a9c4cc/f2e05dfd38ed343d3de77209cf3ecdae.cab",
+    "hash": "sha256-xTbmdC1WoFxHMQwj4JqeWlVS2RT1dS/5BQ7uiOAJvPk="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_uap_headers.msi",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/bf4c8a484028b6e592a6a9d818c21777/windows%20sdk%20onecoreuap%20headers%20x86-x86_en-us.msi",
+    "hash": "sha256-CXJRJ7cOZF/QyG8AShsCBK5y1oXXCy44Vu/ABTOq7sM="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_x64_headers/d1de88680a8e53fe75e01e94dc0ed767.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/f5ae8b50cc21a7ed5bcace1a38fe8fa3/d1de88680a8e53fe75e01e94dc0ed767.cab",
+    "hash": "sha256-nYj6Jp3AL9P95QoFbATW38xbihVzmuDz56xRzByI9bg="
+  },
+  {
+    "path": "Win11SDK_10.0.26100_x64_headers.msi",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/6452c1f1-dc1e-413c-8b19-991b61870a8b/ed222baa6d1d1dc09fb45a1827e7892a/windows%20sdk%20desktop%20headers%20x64-x86_en-us.msi",
+    "hash": "sha256-0YnKUOVjK1RnlZIuImJ5TAaNb/MBhg/rRSK4uTy7O6g="
+  },
+  {
+    "path": "ucrt/16ab2ea2187acffa6435e334796c8c89.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/8c0441e7-98ee-40ae-9a5a-127bcd5f4c52/a4e7a0a15baf966e92c612347f058e7d/16ab2ea2187acffa6435e334796c8c89.cab",
+    "hash": "sha256-/YCZrd1LF3vDjhwl6tLxI3o7kpecK3CD63Vsf/RUn4M="
+  },
+  {
+    "path": "ucrt/2868a02217691d527e42fe0520627bfa.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/8c0441e7-98ee-40ae-9a5a-127bcd5f4c52/0c73cc42594f36fcb900543d5ae1c5d4/2868a02217691d527e42fe0520627bfa.cab",
+    "hash": "sha256-NRyftSQXUoCEIGwT/eAZkgMeKnn7vpToCJY+1kcGEK8="
+  },
+  {
+    "path": "ucrt/6ee7bbee8435130a869cf971694fd9e2.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/fa0c8bc3-bd08-4c37-a465-4d6b8c951bf6/65b6615dbccc5ab984a6602bccc2fddf/6ee7bbee8435130a869cf971694fd9e2.cab",
+    "hash": "sha256-ltKKMkk5yaa7zrOs+hBhUloOY62VrihqV3jtPorjZvo="
+  },
+  {
+    "path": "ucrt/78fa3c824c2c48bd4a49ab5969adaaf7.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/7d9e4bde-cfb6-4a65-9cf1-8c013670a545/c83ab50003c24faecb1712c036583913/78fa3c824c2c48bd4a49ab5969adaaf7.cab",
+    "hash": "sha256-9HN6Jv64s4B4g3myp3EK0wa/sb8T9RdzYfKgsp3CVzc="
+  },
+  {
+    "path": "ucrt/7afc7b670accd8e3cc94cfffd516f5cb.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/4a925113-4714-47d1-8e22-1d149bb57d9f/f0aa309e7ce05004accdc494ea5be759/7afc7b670accd8e3cc94cfffd516f5cb.cab",
+    "hash": "sha256-SVMSyGSiAuszAcxj6Rn16D0UyM3ge/nr+AVDMvqcfCU="
+  },
+  {
+    "path": "ucrt/80dcdb79b8a5960a384abe5a217a7e3a.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/7d9e4bde-cfb6-4a65-9cf1-8c013670a545/bb8935c38f52f40c6ff4499e5ce22636/80dcdb79b8a5960a384abe5a217a7e3a.cab",
+    "hash": "sha256-N69QOGvzta/C9BF6+ZiMC+yF5lrlqcOm8Og+2joc0Wg="
+  },
+  {
+    "path": "ucrt/96076045170fe5db6d5dcf14b6f6688e.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/8c0441e7-98ee-40ae-9a5a-127bcd5f4c52/c01c850a877e91acdac97a613c6ba339/96076045170fe5db6d5dcf14b6f6688e.cab",
+    "hash": "sha256-qOyeL/IWhWrZ/c1lFgksCPM63vv9xpYRP28xVS588Tg="
+  },
+  {
+    "path": "ucrt/a1e2a83aa8a71c48c742eeaff6e71928.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/7d9e4bde-cfb6-4a65-9cf1-8c013670a545/c1b2fdd6a1d50f343b8ed11484250233/a1e2a83aa8a71c48c742eeaff6e71928.cab",
+    "hash": "sha256-x3euqGtBJskLeukBeiv3U/V7ndRQdh230xLVvY9YdPo="
+  },
+  {
+    "path": "ucrt/b2f03f34ff83ec013b9e45c7cd8e8a73.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/4a925113-4714-47d1-8e22-1d149bb57d9f/6d97f0ae0c61820e66c6ac988de5f096/b2f03f34ff83ec013b9e45c7cd8e8a73.cab",
+    "hash": "sha256-0O3SRH9zFPKD9hs9tW62XgHKK28kvUvlKqooVGb7wf8="
+  },
+  {
+    "path": "ucrt/beb5360d2daaa3167dea7ad16c28f996.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/4a925113-4714-47d1-8e22-1d149bb57d9f/8ab6a768c40050b35631171e8506e5e2/beb5360d2daaa3167dea7ad16c28f996.cab",
+    "hash": "sha256-MSD7lnyb0z7fXkQ3ClJwjyfB4knjm60H+ct0XQlN5/s="
+  },
+  {
+    "path": "ucrt/f9ff50431335056fb4fbac05b8268204.cab",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/7d9e4bde-cfb6-4a65-9cf1-8c013670a545/e30af4713083de082115ef655cc31621/f9ff50431335056fb4fbac05b8268204.cab",
+    "hash": "sha256-ISwuCMo6r7gRH3gN5bl9XZIbfgxDRvFFVDSQfCY+tBQ="
+  },
+  {
+    "path": "ucrt.msi",
+    "url": "https://download.visualstudio.microsoft.com/download/pr/fb762014-2a36-4840-8a24-7ff61d1ee019/975874342d151b32b3f4e0eac90db7c8/universal%20crt%20headers%20libraries%20and%20sources-x86_en-us.msi",
+    "hash": "sha256-VESGQe7wWDGLVAGIJFpimC+XzMRiwMHBzzxtdx4m8hQ="
+  }
+]

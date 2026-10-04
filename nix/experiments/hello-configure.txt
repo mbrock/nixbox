@@ -1,0 +1,88 @@
+GNU Hello configure experiment (2026-10-04)
+
+The baseline and follow-ups below describe the earlier wrappers. See the
+porting follow-up at the end for the current working package.
+
+Baseline, with no Hello overrides:
+  nix build .#legacyPackages.x86_64-linux.pkgsXbox.hello --keep-failed -L
+
+Hello 2.12.3 accepts --build=x86_64-unknown-linux-gnu and
+--host=x86_64-pc-windows-msvc, selects the target-prefixed Clang, and stops at
+"C compiler cannot create executables". config.log shows posix_spawn failure.
+Clang's verbose invocation shows it trying to run link.exe. The wrapper puts
+-fuse-ld=lld in cc-ldflags, which Nix forwards as a linker argument rather than
+a compiler-driver option. The target binutils also lacks the lld-link executable
+the MSVC driver searches for.
+
+Bounded follow-up, leaving Hello's source and configure unmodified:
+  nix build --impure --file nix/experiments/hello-configure.nix --keep-failed -L
+
+This adds native LLD to PATH and passes -fuse-ld=lld through CFLAGS. Configure
+then links a.exe successfully, discovers .exe and .o suffixes, recognizes cross
+compilation, and executes many header/function probes. It eventually stops at:
+  cannot make x86_64-pc-windows-msvc-clang report undeclared builtins
+
+The failing negative test is "int main(void) { (void) strchr; return 0; }".
+Both its ordinary and -fno-builtin variants compile, because the compiler wrapper
+force-includes msvc-compat.h, which includes windows.h and indirectly declares
+strchr. The same source fails with an undeclared identifier when compiled by
+bare Clang targeting MSVC without that forced header. This is probe contamination,
+not inability to diagnose undeclared identifiers.
+
+Other observations before the fatal probe:
+  - Autoconf reports GNU C = no because this target does not define __GNUC__.
+  - Its C89/C99/C11 conformance probes reject the missing __STDC__ macro.
+  - Missing Unix headers and functions produce normal negative probe results.
+  - Runtime probes use cross-compilation guesses; no Xbox code was executed.
+  - LLD still warns about the original misplaced -fuse-ld=lld argument.
+
+The normal pkgsXbox compiler and working Xbox app were unchanged by this test.
+Next toolchain work would move linker selection into driver flags, expose
+lld-link, and scope the C++/WinRT compatibility header more narrowly. After that,
+MSVC conformance detection and GNU/Unix library assumptions may need adaptation.
+This experiment does not establish that GNU Hello can compile or run on Xbox.
+
+Captured local evidence (ignored build-output/):
+  hello-original-config.log   Baseline config.log
+  conftest-original.log       Verbose baseline link invocation
+  hello-linker-probe3.log     Follow-up build transcript
+  hello-linker3-config.log    Follow-up config.log
+  undeclared-probe.log        Isolated negative test without forced headers
+
+Second follow-up: remove the forced compatibility header from pkgsXbox's
+compiler, retaining it only in uwp-crossbuild's app build driver.
+
+The same hello-configure.nix linker experiment now completes configure,
+including "undeclared functions... none needed", and creates Makefile and
+config.h. No configure cache answers were overridden. Compilation then fails
+in the bundled GNU portability code:
+  - getprogname.c: "getprogname module not ported to this OS"
+  - getopt.c: getenv is undeclared under the UWP API family
+  - fcntl.c: HANDLE_FLAG_INHERIT is unavailable under the UWP API family
+
+This confirms that forced headers contaminated configure tests. The remaining
+errors expose OS/API portability work, rather than a configure execution problem.
+The linker selection still uses the local experiment's overrides.
+Captured transcript: build-output/hello-no-compat.log.
+
+Porting follow-up: normal pkgsXbox.hello now builds successfully.
+
+The compiler selects LLD in its driver flags and exposes lld-link. The misplaced
+linker argument is removed. nix/hello-uwp.patch supplies the three source fixes
+above and replaces the stat implementation's desktop-only CreateFileA call
+with CreateFile2, retaining ANSI code-page conversion, sharing modes, directory
+handling, and GetLastError across temporary buffer cleanup.
+
+The source/configure is otherwise unchanged, and no configure cache answers are
+overridden. Target tests/install checks are disabled in the Linux builder;
+check-hello.py checks executable behavior through Wine. hello-configure.nix now
+simply returns the ported package, with no experimental linker overrides.
+
+The result is a Windows console program, not yet a packaged Xbox UWP app.
+Inspection finds desktop CRT startup imports, and it does not have the UWP
+activation entry points/flags. A successful Wine run does not verify Xbox
+activation. The existing zlib-linked UWP app uses its separate proven build path.
+
+Captured build: build-output/hello-ported.log.
+Behavioral checks: build-output/hello-behavior.log.
+PE imports: build-output/hello-imports.log.

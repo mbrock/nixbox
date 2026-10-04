@@ -1,0 +1,11 @@
+.wine*/
+build-output/
+*.log
+__pycache__/
+*.pfx
+*.pem
+result
+result-*
+uwp-crossbuild/
+openappx/
+.xwin-cache/

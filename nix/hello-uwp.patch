@@ -1,0 +1,122 @@
+--- a/lib/getprogname.c
++++ b/lib/getprogname.c
+@@ -48,6 +48,7 @@
+ #endif
+ 
+ #include "basename-lgpl.h"
++#include "progname.h"
+ 
+ #ifndef HAVE_GETPROGNAME  /* not Mac OS X, FreeBSD, NetBSD, OpenBSD >= 5.4, Solaris >= 11, Cygwin, Android API level >= 21 */
+ char const *
+@@ -252,7 +253,8 @@
+     }
+   return "?";
+ # else
+-#  error "getprogname module not ported to this OS"
++  /* UWP hides the CRT __argv global. main initializes program_name. */
++  return program_name ? last_component (program_name) : "?";
+ # endif
+ }
+ 
+--- a/lib/getopt.c
++++ b/lib/getopt.c
+@@ -408,7 +408,7 @@
+       d->__ordering = REQUIRE_ORDER;
+       ++optstring;
+     }
+-  else if (posixly_correct || !!getenv ("POSIXLY_CORRECT"))
++  else if (posixly_correct /* UWP has no process environment; use the explicit mode. */)
+     d->__ordering = REQUIRE_ORDER;
+   else
+     d->__ordering = PERMUTE;
+--- a/lib/fcntl.c
++++ b/lib/fcntl.c
+@@ -37,6 +37,11 @@
+ /* Get declarations of the native Windows API functions.  */
+ # define WIN32_LEAN_AND_MEAN
+ # include <windows.h>
++/* The SDK hides this constant in winbase.h under the desktop partition,
++   although GetHandleInformation itself is available to UWP. */
++# ifndef HANDLE_FLAG_INHERIT
++#  define HANDLE_FLAG_INHERIT 0x00000001
++# endif
+ 
+ /* Get _get_osfhandle.  */
+ # if GNULIB_MSVC_NOTHROW
+--- a/lib/stat.c
++++ b/lib/stat.c
+@@ -63,6 +63,39 @@
+ # define CreateFile CreateFileA
+ # undef FindFirstFile
+ # define FindFirstFile FindFirstFileA
++#endif
++
++#ifdef WINDOWS_NATIVE
++/* CreateFileA is desktop-only. Keep gnulib's ANSI path interpretation while
++   using the UWP file-opening API and preserving its error for the caller. */
++static HANDLE
++uwp_open_stat_file (const char *name)
++{
++  int count = MultiByteToWideChar (CP_ACP, 0, name, -1, NULL, 0);
++  if (!count)
++    return INVALID_HANDLE_VALUE;
++  wchar_t *wide = HeapAlloc (GetProcessHeap (), 0, count * sizeof *wide);
++  if (!wide)
++    {
++      SetLastError (ERROR_NOT_ENOUGH_MEMORY);
++      return INVALID_HANDLE_VALUE;
++    }
++  HANDLE result = INVALID_HANDLE_VALUE;
++  if (MultiByteToWideChar (CP_ACP, 0, name, -1, wide, count))
++    {
++      CREATEFILE2_EXTENDED_PARAMETERS params = { 0 };
++      params.dwSize = sizeof params;
++      params.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
++      params.dwFileFlags = FILE_FLAG_BACKUP_SEMANTICS;
++      result = CreateFile2 (wide, FILE_READ_ATTRIBUTES,
++                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
++                           OPEN_EXISTING, &params);
++    }
++  DWORD error = GetLastError ();
++  HeapFree (GetProcessHeap (), 0, wide);
++  SetLastError (error);
++  return result;
++}
+ #endif
+ 
+ #ifdef WINDOWS_NATIVE
+@@ -198,17 +231,7 @@
+          CreateFile
+          <https://docs.microsoft.com/en-us/windows/desktop/api/fileapi/nf-fileapi-createfilea>
+          <https://docs.microsoft.com/en-us/windows/desktop/FileIO/creating-and-opening-files>  */
+-      HANDLE h =
+-        CreateFile (rname,
+-                    FILE_READ_ATTRIBUTES,
+-                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+-                    NULL,
+-                    OPEN_EXISTING,
+-                    /* FILE_FLAG_POSIX_SEMANTICS (treat file names that differ only
+-                       in case as different) makes sense only when applied to *all*
+-                       filesystem operations.  */
+-                    FILE_FLAG_BACKUP_SEMANTICS /* | FILE_FLAG_POSIX_SEMANTICS */,
+-                    NULL);
++      HANDLE h = uwp_open_stat_file (rname);
+       if (h != INVALID_HANDLE_VALUE)
+         {
+           ret = _gl_fstat_by_handle (h, rname, buf);
+--- a/src/hello.c
++++ b/src/hello.c
+@@ -48,7 +48,13 @@
+ static _Noreturn void
+ print_help (FILE *restrict out)
+ {
++  /* The Windows CRT rejects gnulib's synthetic LC_MESSAGES category.
++     Hello's UWP build has NLS disabled, so no message locale is needed. */
++#if ENABLE_NLS
+   const char *lc_messages = setlocale (LC_MESSAGES, NULL);
++#else
++  const char *lc_messages = NULL;
++#endif
+   /* TRANSLATORS: --help output 1 (synopsis)
+      no-wrap */
+   fprintf (out, _("Usage: %s [OPTION]...\n"), program_name);
