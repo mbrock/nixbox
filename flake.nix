@@ -82,6 +82,7 @@
           game = import ./templates/game/game.nix xboxLib;
           hello = import ./example/hello.nix xboxLib;
           sdlgame = import ./templates/sdl/game.nix xboxLib;
+          d3d12caps = import ./probes/d3d12-caps/probe.nix xboxLib;
           # Wine runs midlrt for the XAML sample and MSBuild for the .vcxproj
           # route. Nixpkgs has no Wine for Apple silicon.
           hasWine = pkgs.stdenv.hostPlatform.isLinux;
@@ -101,7 +102,7 @@
             }
             // {
               default = if hasWine then hello else game;
-              inherit game sdlgame;
+              inherit game sdlgame d3d12caps;
               zlib-xbox = pkgsXbox.zlib;
               hello-xbox = pkgsXbox.hello;
               luau-xbox = pkgsXbox.luau;
@@ -118,6 +119,7 @@
             };
             deploy-game = app.mkDeploy game;
             deploy-sdlgame = app.mkDeploy sdlgame;
+            deploy-d3d12caps = app.mkDeploy d3d12caps;
           }
           // withWine { deploy-hello = app.mkDeploy hello; };
           checks = {
@@ -137,6 +139,7 @@
           devShells = {
             game = game.devShell;
             sdlgame = sdlgame.devShell;
+            d3d12caps = d3d12caps.devShell;
           }
           // withWine {
             hello = hello.devShell;
