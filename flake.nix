@@ -40,11 +40,23 @@
       toolchain = import ./nix/toolchain.nix { inherit pkgs inputs pkgsXbox llvmPackages; };
       xbox = import ./nix/xbox-pkgs.nix { inherit pkgs inputs toolchain llvmPackageSet llvmPackages; };
       pkgsXbox = xbox.pkgsXbox;
+      app = import ./nix/app {
+        inherit pkgs pkgsXbox llvmPackages inputs;
+        inherit (xbox) xboxCC;
+        inherit (toolchain) python;
+      };
+      # The interface a game's flake uses: see templates/game.
+      xboxLib = app // {
+        inherit pkgs pkgsXbox;
+        inherit (xbox) mkPkgsXbox;
+      };
+      game = import ./templates/game/game.nix xboxLib;
     in
     {
       packages.${system} = toolchain.packages // {
         default = toolchain.hello;
         hello-uwp = toolchain.hello;
+        inherit game;
         zlib-xbox = pkgsXbox.zlib;
         hello-xbox = pkgsXbox.hello;
         luau-xbox = pkgsXbox.luau;
@@ -52,12 +64,25 @@
         xbox-cc = xbox.xboxCC;
       };
       legacyPackages.${system} = { inherit pkgsXbox; };
+      lib.${system} = xboxLib;
+      apps.${system} = {
+        deploy = {
+          type = "app";
+          program = pkgs.lib.getExe app.deployTool;
+        };
+        deploy-game = app.mkDeploy game;
+      };
+      templates.game = {
+        path = ./templates/game;
+        description = "A Direct3D 12 game for Xbox, built with CMake";
+      };
       checks.${system} = {
         xbox-compiler = import ./nix/check-compiler.nix {
           inherit pkgs llvmPackages;
           compiler = xbox.xboxCC;
         };
         hello-uwp = toolchain.hello;
+        inherit game;
         zlib-xbox = pkgsXbox.zlib;
         hello-xbox = pkgsXbox.hello;
         luau-xbox = pkgsXbox.luau;

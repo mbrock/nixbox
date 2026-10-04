@@ -51,6 +51,19 @@ and deploy steps. Packages, app layouts, and deployment screenshots go into
 `build-output/`. See [development](docs/development.md) for incremental builds
 and signing details.
 
+## Make your own game
+
+```sh
+nix flake init -t github:mbrock/nixbox#game
+nix build
+UWP_DEVICE_URL=https://your-xbox.example nix run .#deploy
+```
+
+The template is a full-screen Direct3D 12 game built with CMake. `mkXboxApp`
+takes an ordinary derivation, using any build system and any `pkgsXbox`
+libraries, and produces an installable package. No Visual Studio project or
+Wine is involved. See [building apps](docs/apps.md).
+
 ## Nixpkgs, targeting Xbox
 
 `pkgsXbox` is a Nixpkgs cross package set with a custom MSVC/UWP toolchain.
@@ -80,6 +93,8 @@ to add ports.
 | `nix build .#toolchain` | Standalone build and packaging tools |
 | `nix build .#luau-xbox` | Static Luau VM and bytecode compiler |
 | `nix build .#zlib-xbox` | Static zlib and headers |
+| `nix build .#game` | The game template's package |
+| `nix run .#deploy-game` | Deploy it to the console |
 | `nix build .#cube-shaders` | HLSL compiled into embedded shader bytecode |
 | `nix build .#xbox-cc` | Wrapped Clang cross compiler and binutils |
 

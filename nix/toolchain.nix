@@ -248,7 +248,7 @@ let
       '';
 in
 {
-  inherit tools hello shaders;
+  inherit tools hello shaders python;
   UWP_XWIN_ROOT = xwinRoot;
   UWP_SDK_ROOT = sdk;
   UWP_CPPWINRT_EXE = "${cppwinrt}/bin/cppwinrt";

@@ -19,6 +19,12 @@ screenshot to `build-output/xbox-hello.png`. Look at that screenshot to verify
 a change on the console; the sample's status lines report whether each check
 passed. `build-output/deployment.json` records the last device and process.
 
+Games are built the main way, without a Visual Studio project or Wine: see
+[docs/apps.md](docs/apps.md) and `templates/game/` (`nix build .#game`,
+`UWP_DEVICE_URL=… nix run .#deploy-game -- --screenshot build-output/game.png`).
+The XAML sample in `example/` uses the `.vcxproj` route for porting Visual Studio
+projects. docs/apps.md also covers reading crash dumps when a launch fails.
+
 Nix flakes only see tracked files: `git add` new files before `./build`.
 `nix flake check` runs the compiler, library, and app checks.
 
