@@ -17,7 +17,11 @@ packaged and signed on Linux.
 
 You'll need:
 
-- An **x86_64 Linux machine** with Nix and flakes enabled.
+- An **x86_64 Linux machine** with Nix and flakes enabled. An Apple silicon
+  Mac works too, for everything except the steps that need Wine: the XAML
+  sample (`hello`, whose `.idl` goes through `midlrt`) and the Visual Studio
+  project route. On a Mac, start with the game: `nix build .#game` and
+  `nix run .#deploy-game`.
 - An Xbox with **Developer Mode enabled** and Device Portal reachable from your
   machine. Building the app doesn't require a console.
 

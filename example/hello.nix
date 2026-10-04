@@ -1,4 +1,4 @@
-# The XAML sample, described for nixbox. `xbox` is nixbox.lib.x86_64-linux.
+# The XAML sample, described for nixbox. `xbox` is nixbox.lib.<system>.
 xbox:
 xbox.mkXboxApp {
   pname = "hello";

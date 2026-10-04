@@ -30,7 +30,9 @@ xbox.mkXboxApp {
 }
 ```
 
-`xbox` is `nixbox.lib.x86_64-linux`. In this repository, `nix build .#game`
+`xbox` is `nixbox.lib.<system>`, for `x86_64-linux` or `aarch64-darwin`;
+the template's flake provides both. Everything here works the same on an Apple
+silicon Mac except `idl`, which runs `midlrt` under Wine and so needs Linux. In this repository, `nix build .#game`
 builds the template and `nix run .#deploy-game` deploys it.
 
 ## Hacking in a dev shell

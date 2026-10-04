@@ -24,88 +24,148 @@
   outputs =
     inputs:
     let
-      system = "x86_64-linux";
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        config.allowUnfreePredicate =
-          package:
-          builtins.elem (inputs.nixpkgs.lib.getName package) [
-            "uwp-xwin"
-            "uwp-sdk"
-            "uwp-msxml6"
+      lib = inputs.nixpkgs.lib;
+      # Linux is the reference host. macOS builds the same packages natively;
+      # only the steps that run Windows tools under Wine need Linux.
+      systems = [
+        "x86_64-linux"
+        "aarch64-darwin"
+      ];
+      forSystem =
+        system:
+        let
+          pkgs = import inputs.nixpkgs {
+            inherit system;
+            config.allowUnfreePredicate =
+              package:
+              builtins.elem (inputs.nixpkgs.lib.getName package) [
+                "uwp-xwin"
+                "uwp-sdk"
+                "uwp-msxml6"
+              ];
+          };
+          llvmPackageSet = "llvmPackages_23";
+          llvmPackages = pkgs.${llvmPackageSet};
+          toolchain = import ./nix/toolchain.nix {
+            inherit
+              pkgs
+              inputs
+              pkgsXbox
+              llvmPackages
+              ;
+          };
+          xbox = import ./nix/xbox-pkgs.nix {
+            inherit
+              pkgs
+              inputs
+              toolchain
+              llvmPackageSet
+              llvmPackages
+              ;
+          };
+          pkgsXbox = xbox.pkgsXbox;
+          app = import ./nix/app {
+            inherit
+              pkgs
+              pkgsXbox
+              llvmPackages
+              inputs
+              ;
+            inherit (xbox) xboxCC;
+            inherit (toolchain) python tools;
+          };
+          # The interface a game's flake uses: see templates/game.
+          xboxLib = app // {
+            inherit pkgs pkgsXbox;
+            inherit (xbox) mkPkgsXbox;
+          };
+          game = import ./templates/game/game.nix xboxLib;
+          hello = import ./example/hello.nix xboxLib;
+          # Wine runs midlrt for the XAML sample and MSBuild for the .vcxproj
+          # route. Nixpkgs has no Wine for Apple silicon.
+          hasWine = pkgs.stdenv.hostPlatform.isLinux;
+          withWine = lib.optionalAttrs hasWine;
+          wineTools = [
+            "toolchain"
+            "uwp-crossbuild"
+            "cache-roots"
           ];
-      };
-      llvmPackageSet = "llvmPackages_23";
-      llvmPackages = pkgs.${llvmPackageSet};
-      toolchain = import ./nix/toolchain.nix { inherit pkgs inputs pkgsXbox llvmPackages; };
-      xbox = import ./nix/xbox-pkgs.nix { inherit pkgs inputs toolchain llvmPackageSet llvmPackages; };
-      pkgsXbox = xbox.pkgsXbox;
-      app = import ./nix/app {
-        inherit pkgs pkgsXbox llvmPackages inputs;
-        inherit (xbox) xboxCC;
-        inherit (toolchain) python tools;
-      };
-      # The interface a game's flake uses: see templates/game.
-      xboxLib = app // {
-        inherit pkgs pkgsXbox;
-        inherit (xbox) mkPkgsXbox;
-      };
-      game = import ./templates/game/game.nix xboxLib;
-      hello = import ./example/hello.nix xboxLib;
+        in
+        {
+          packages =
+            (if hasWine then toolchain.packages else removeAttrs toolchain.packages wineTools)
+            // withWine {
+              inherit hello;
+              hello-vcxproj = toolchain.hello;
+            }
+            // {
+              default = if hasWine then hello else game;
+              inherit game;
+              zlib-xbox = pkgsXbox.zlib;
+              hello-xbox = pkgsXbox.hello;
+              luau-xbox = pkgsXbox.luau;
+              xbox-cxx-headers = xbox.cxxHeaders;
+              xbox-cc = xbox.xboxCC;
+            };
+          legacyPackages = { inherit pkgsXbox; };
+          lib = xboxLib;
+          apps = {
+            deploy = {
+              type = "app";
+              program = pkgs.lib.getExe app.deployTool;
+            };
+            deploy-game = app.mkDeploy game;
+          }
+          // withWine { deploy-hello = app.mkDeploy hello; };
+          checks = {
+            xbox-compiler = import ./nix/check-compiler.nix {
+              inherit pkgs llvmPackages;
+              compiler = xbox.xboxCC;
+            };
+            inherit game;
+            zlib-xbox = pkgsXbox.zlib;
+            hello-xbox = pkgsXbox.hello;
+            luau-xbox = pkgsXbox.luau;
+          }
+          // withWine {
+            inherit hello;
+            hello-vcxproj = toolchain.hello;
+          };
+          devShells = {
+            game = game.devShell;
+          }
+          // withWine {
+            hello = hello.devShell;
+            default = pkgs.mkShell {
+              packages = [
+                toolchain.tools
+                pkgs.git
+                pkgs.openssl
+              ];
+              inherit (toolchain) UWP_XWIN_ROOT UWP_SDK_ROOT UWP_CPPWINRT_EXE;
+              WINEARCH = "wow64";
+              WINEDEBUG = "-all";
+              WINEDLLOVERRIDES = "mscoree,mshtml=;msxml6=n,b";
+              shellHook = ''
+                export WINEPREFIX="''${WINEPREFIX:-''${XDG_CACHE_HOME:-$HOME/.cache}/xbox-uwp/wine}"
+              '';
+            };
+          };
+        };
+      outputs = lib.genAttrs systems forSystem;
+      # The flake's output names, each keyed by system.
+      perSystem = name: lib.mapAttrs (_: outputs: outputs.${name}) outputs;
     in
     {
-      packages.${system} = toolchain.packages // {
-        default = hello;
-        inherit hello game;
-        hello-vcxproj = toolchain.hello;
-        zlib-xbox = pkgsXbox.zlib;
-        hello-xbox = pkgsXbox.hello;
-        luau-xbox = pkgsXbox.luau;
-        xbox-cxx-headers = xbox.cxxHeaders;
-        xbox-cc = xbox.xboxCC;
-      };
-      legacyPackages.${system} = { inherit pkgsXbox; };
-      lib.${system} = xboxLib;
-      apps.${system} = {
-        deploy = {
-          type = "app";
-          program = pkgs.lib.getExe app.deployTool;
-        };
-        deploy-game = app.mkDeploy game;
-        deploy-hello = app.mkDeploy hello;
-      };
+      packages = perSystem "packages";
+      legacyPackages = perSystem "legacyPackages";
+      lib = perSystem "lib";
+      apps = perSystem "apps";
+      checks = perSystem "checks";
+      devShells = perSystem "devShells";
       templates.game = {
         path = ./templates/game;
         description = "A Direct3D 12 game for Xbox, built with Meson";
-      };
-      checks.${system} = {
-        xbox-compiler = import ./nix/check-compiler.nix {
-          inherit pkgs llvmPackages;
-          compiler = xbox.xboxCC;
-        };
-        inherit hello game;
-        hello-vcxproj = toolchain.hello;
-        zlib-xbox = pkgsXbox.zlib;
-        hello-xbox = pkgsXbox.hello;
-        luau-xbox = pkgsXbox.luau;
-      };
-      devShells.${system} = {
-        game = game.devShell;
-        hello = hello.devShell;
-        default = pkgs.mkShell {
-          packages = [
-            toolchain.tools
-            pkgs.git
-            pkgs.openssl
-          ];
-          inherit (toolchain) UWP_XWIN_ROOT UWP_SDK_ROOT UWP_CPPWINRT_EXE;
-          WINEARCH = "wow64";
-          WINEDEBUG = "-all";
-          WINEDLLOVERRIDES = "mscoree,mshtml=;msxml6=n,b";
-          shellHook = ''
-            export WINEPREFIX="''${WINEPREFIX:-''${XDG_CACHE_HOME:-$HOME/.cache}/xbox-uwp/wine}"
-          '';
-        };
       };
     };
 }

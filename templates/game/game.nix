@@ -1,4 +1,4 @@
-# The game, described for nixbox. `xbox` is nixbox.lib.x86_64-linux.
+# The game, described for nixbox. `xbox` is nixbox.lib.<system>.
 xbox:
 xbox.mkXboxApp {
   pname = "game";
