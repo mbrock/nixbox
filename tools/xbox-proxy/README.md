@@ -96,9 +96,10 @@ app another is watching, so the proxy grants one client at a time a lease:
   gives the console back, and `GET /lease` shows the holder and the queue.
 - Leases last their ttl (default 10 minutes, at most 30) unless renewed. The
   holder is recorded with its Tailscale login and machine.
-- When no one holds the lease, requests pass as they always did, so older
-  tools keep working until someone takes it. State is in memory; restarting
-  the proxy clears it.
+- A changing request without a lease is refused even when the console is
+  free (`428 Precondition Required`), so no tool can change the console
+  without taking its turn; tools must take a lease first. State is in memory;
+  restarting the proxy clears it.
 
 `nix run .#xbox-lease` is the client (`status`, `acquire`, `release`, and `run
 -- COMMAND`), and nixbox's deploy takes the lease itself; see

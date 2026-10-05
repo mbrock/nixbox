@@ -5,8 +5,9 @@ package main
 // Agents share one console, and an install or launch from one replaces the
 // app another is measuring. A lease names the client allowed to send
 // changing requests (anything but GET, HEAD, and OPTIONS) to the portal;
-// others wait in a first-come queue. Reads stay open to everyone, and while
-// no one holds the lease, requests pass as before.
+// others wait in a first-come queue. Reads stay open to everyone. A changing
+// request without the holder's token is refused even when the console is
+// free (428), so no tool can change it without taking its turn.
 //
 //	POST /lease/acquire?label=L&ttl=SECONDS[&ticket=T][&wait=SECONDS]
 //	  200 {"token", "label", "who", "expires"} once granted, or
@@ -267,18 +268,25 @@ func (l *leases) gate(next http.Handler) http.Handler {
 		l.mu.Lock()
 		l.settle()
 		holder := l.holder
-		var blocked map[string]any
-		if holder != nil && holder.Token != token {
-			blocked = map[string]any{
+		status, blocked := 0, map[string]any(nil)
+		switch {
+		case holder == nil:
+			status, blocked = http.StatusPreconditionRequired, map[string]any{
+				"error": fmt.Sprintf("changing the Xbox needs its lease: take one "+
+					"with POST /lease/acquire (nixbox's deploy and xbox-lease do) "+
+					"and send its token in %s", leaseHeader),
+				"waiting": len(l.queue)}
+		case holder.Token != token:
+			status, blocked = http.StatusLocked, map[string]any{
 				"error": fmt.Sprintf("the Xbox is leased to %q (%s) until %s; "+
-					"take a lease with POST /lease/acquire and send it in %s",
+					"take your turn with POST /lease/acquire and send the token in %s",
 					holder.Label, holder.Who,
 					holder.Expires.Format(time.RFC3339), leaseHeader),
 				"holder": l.public(holder), "waiting": len(l.queue)}
 		}
 		l.mu.Unlock()
 		if blocked != nil {
-			writeJSON(w, http.StatusLocked, blocked)
+			writeJSON(w, status, blocked)
 			return
 		}
 		next.ServeHTTP(w, r)

@@ -34,8 +34,8 @@ func TestLeaseQueue(t *testing.T) {
 	l := newLeases(func(*http.Request) string { return "tester" })
 	h := l.routes(portal(&reached))
 
-	// Free console: unleased changes pass, as before the lease existed.
-	if code, _ := call(t, h, "POST", "/api/taskmanager/app", ""); code != 200 {
+	// Even a free console refuses changes without a lease.
+	if code, _ := call(t, h, "POST", "/api/taskmanager/app", ""); code != 428 {
 		t.Fatalf("unleased change on a free console: %d", code)
 	}
 	// A takes the lease at once.
@@ -93,7 +93,10 @@ func TestLeaseExpires(t *testing.T) {
 		t.Fatalf("held: %d", code)
 	}
 	now = now.Add(61 * time.Second)
-	if code, _ := call(t, h, "POST", "/api/control/restart", ""); code != 200 {
-		t.Fatalf("expired lease should free the console: %d", code)
+	if code, _ := call(t, h, "POST", "/api/control/restart", ""); code != 428 {
+		t.Fatalf("expired lease should free the console for the next lease: %d", code)
+	}
+	if code, body := call(t, h, "POST", "/lease/acquire?label=b&wait=0", ""); code != 200 {
+		t.Fatalf("the next client should get the expired lease: %d %v", code, body)
 	}
 }

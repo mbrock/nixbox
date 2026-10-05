@@ -71,8 +71,11 @@ nix run .#xbox-lease -- run --ttl 900 -- sh -c 'nix run .#deploy-game; ...'
 ```
 
 `xbox-lease run` holds the console, renewing it, while its command runs, and
-sets `XBOX_LEASE` so the deploys inside use that lease. A portal without the
-lease service is used as before.
+sets `XBOX_LEASE` so the deploys inside use that lease. Any other tool that
+changes the console (an install, a launch, a `curl -X POST` to Device Portal)
+must carry a lease in `X-Xbox-Lease` too: the proxy refuses changes without
+one (428) or under someone else's (423). A portal without the lease service
+is used as before.
 
 ## Incremental builds
 
