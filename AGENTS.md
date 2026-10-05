@@ -15,6 +15,15 @@ nix run .#deploy-hello -- --screenshot build-output/hello.png
 nix develop .#hello -c make -C example deploy   # incremental
 ```
 
+The console is shared with other agents, so changing it goes through a lease
+(`tools/xbox-proxy`): deploy waits its turn, takes the console, and keeps it for
+`--hold` seconds (default 300) after launching so you can watch your app.
+Release it as soon as you are done with `nix run .#xbox-lease -- release`, wrap
+a longer session in `nix run .#xbox-lease -- run --ttl 900 -- COMMAND...`
+(which sets `XBOX_LEASE` for the deploys inside it), and check who has it with
+`nix run .#xbox-lease -- status`. A `423 Locked` answer means someone else
+holds the console: wait for it rather than working around the lease.
+
 Deployment signs, installs, launches, checks the process, and saves a console
 screenshot. Look at that screenshot to verify a change on the console; the
 sample's status lines report whether each check passed. The game template

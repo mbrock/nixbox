@@ -54,6 +54,26 @@ running process, and saves a console screenshot (`--screenshot PATH`; default
 Set `UWP_DEVICE_USER` and `OPENAPPX_DEVICE_PASSWORD` if Device Portal requires
 credentials. HTTPS uses normal CA verification.
 
+### Sharing the console
+
+When the portal is reached through the proxy in
+[tools/xbox-proxy](../tools/xbox-proxy/README.md), the console is leased to one
+client at a time. Deployment waits for the lease (printing its place in the
+queue), takes it, and keeps holding it for `--hold` seconds after launching
+(default 300; `--hold 0` gives it back on exit). Other clients' installs and
+launches are refused with `423 Locked` meanwhile; screenshots and file reads
+stay open.
+
+```sh
+nix run .#xbox-lease -- status        # holder and queue
+nix run .#xbox-lease -- release       # give back the lease this machine took
+nix run .#xbox-lease -- run --ttl 900 -- sh -c 'nix run .#deploy-game; ...'
+```
+
+`xbox-lease run` holds the console, renewing it, while its command runs, and
+sets `XBOX_LEASE` so the deploys inside use that lease. A portal without the
+lease service is used as before.
+
 ## Incremental builds
 
 ```sh

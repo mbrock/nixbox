@@ -174,6 +174,11 @@
               type = "app";
               program = pkgs.lib.getExe app.deployTool;
             };
+            # xbox-lease status|acquire|release|run: share the console.
+            xbox-lease = {
+              type = "app";
+              program = pkgs.lib.getExe app.leaseTool;
+            };
             deploy-game = app.mkDeploy game;
             deploy-sdlgame = app.mkDeploy sdlgame;
             deploy-ricochet = app.mkDeploy ricochet;

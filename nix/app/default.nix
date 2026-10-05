@@ -145,10 +145,25 @@ let
     pkgs.file
   ];
 
+  # The deploy script and the console lease client it shares with
+  # xbox-lease, side by side so the one can import the other.
+  deployScripts = pkgs.runCommand "nixbox-deploy-scripts" { } ''
+    mkdir -p $out
+    cp ${./deploy.py} $out/deploy.py
+    cp ${./xbox_lease.py} $out/xbox_lease.py
+  '';
+
   deployTool = pkgs.writeShellApplication {
     name = "nixbox-deploy";
     runtimeInputs = [ python ];
-    text = ''exec python3 ${./deploy.py} "$@"'';
+    text = ''exec python3 ${deployScripts}/deploy.py "$@"'';
+  };
+
+  # Take, hold, or give back the shared console; see xbox_lease.py.
+  leaseTool = pkgs.writeShellApplication {
+    name = "xbox-lease";
+    runtimeInputs = [ pkgs.python3 ];
+    text = ''exec python3 ${deployScripts}/xbox_lease.py "$@"'';
   };
 
   # Build an Xbox app with any build system. The build installs its
@@ -262,6 +277,7 @@ let
           xboxPackage
           xboxDeploy
           deployTool
+          leaseTool
         ];
         CMAKE_TOOLCHAIN_FILE = toolchainFile;
         shellHook = ''
@@ -336,6 +352,7 @@ in
     compileIdl
     compileShaders
     deployTool
+    leaseTool
     mkDeploy
     ;
 }

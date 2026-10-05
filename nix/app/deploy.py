@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Sign a nixbox package locally, install it on an Xbox, launch it, and take a screenshot.
 
+The console is shared, so deployment first takes its lease (see xbox_lease.py):
+it waits its turn, and keeps holding the console for --hold seconds after the
+launch so the app can be watched undisturbed. With XBOX_LEASE set (as
+`xbox-lease run` sets it), the deployment uses that lease instead.
+
 The package is a mkXboxApp result: a directory with layout/ and one .msix.
 The development certificate is created on first use, with the manifest's
 publisher as its subject, and kept outside the repository and the Nix store.
 """
 import argparse
+import atexit
 import json
 import os
 from pathlib import Path
@@ -20,6 +26,8 @@ import xml.etree.ElementTree as ET
 
 from openappx.deploy import DevicePortal
 
+import xbox_lease
+
 config = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "nixbox"
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("package", type=Path, help="mkXboxApp result directory")
@@ -29,13 +37,11 @@ parser.add_argument("--screenshot", type=Path, default=Path("xbox-screenshot.png
                     help="where to save the console screenshot (default: %(default)s)")
 parser.add_argument("--crash-dumps", action="store_true",
                     help="have the console keep a dump if the app crashes")
+parser.add_argument("--hold", type=int, default=300,
+                    help="seconds to keep the console lease after launching (default: %(default)s);"
+                         " give it back early with `xbox-lease release`")
 args = parser.parse_args()
-device = args.device
-if not device and (config / "device").exists():
-    device = (config / "device").read_text().strip()
-if not device:
-    parser.error(f"Set UWP_DEVICE_URL or write the Device Portal URL to {config}/device")
-device = device.rstrip("/")
+device = xbox_lease.device_url(args.device)
 
 manifest = ET.parse(args.package / "layout/AppxManifest.xml").getroot()
 identity = manifest.find("{*}Identity").attrib
@@ -63,8 +69,32 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.run(["openappx", "sign", "--package", str(signed), "--pfx", str(pfx)],
                    check=True, stdout=subprocess.DEVNULL)
 
+    # Take the console before changing anything on it. A lease this deploy
+    # took is given back if it fails before launching, or if --hold is 0.
+    lease = os.environ.get("XBOX_LEASE")
+    if not lease:
+        lease = xbox_lease.acquire(device, xbox_lease.default_label(f"deploy {identity['Name']}"),
+                                   ttl=max(args.hold, 120))
+        launched = []
+
+        @atexit.register
+        def give_back():
+            if lease and (not launched or args.hold <= 0):
+                xbox_lease.release(device, lease)
+            elif lease:
+                print(f"Holding the Xbox for {args.hold} s; `xbox-lease release` gives it back sooner",
+                      flush=True)
+    else:
+        launched = [True]
+
+    class LeasedPortal(DevicePortal):
+        def _urlopen(self, request):
+            if lease:
+                request.add_header(xbox_lease.HEADER, lease)
+            return super()._urlopen(request)
+
     # HTTPS uses normal CA verification; credentials come from the environment.
-    portal = DevicePortal(device, os.environ.get("UWP_DEVICE_USER", ""),
+    portal = LeasedPortal(device, os.environ.get("UWP_DEVICE_USER", ""),
                           os.environ.get("OPENAPPX_DEVICE_PASSWORD", ""), timeout=60)
     existing = [p for p in portal.packages() if p["PackageFullName"].startswith(identity["Name"] + "_")]
     for previous in existing:
@@ -92,6 +122,9 @@ if args.crash_dumps:
     print("Crash dumps enabled: " + device + "/api/debug/dump/usermode/dumps", flush=True)
 print(f"Launching {installed['PackageFullName']}!{application['Id']}", flush=True)
 portal.start_app(installed["PackageFullName"], application["Id"])
+launched.append(True)
+if lease and args.hold > 0 and not os.environ.get("XBOX_LEASE"):
+    xbox_lease.renew(device, lease, args.hold)
 time.sleep(3)
 with urllib.request.urlopen(device + "/api/resourcemanager/processes", timeout=30) as response:
     processes = json.load(response)["Processes"]
