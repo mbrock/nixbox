@@ -114,9 +114,12 @@ let
     pname = "openappx";
     version = "0.7.0";
     src = inputs.openappx;
+    patches = [ ./openappx-content-types.patch ];
     pyproject = true;
     build-system = [ pkgs.python3Packages.setuptools ];
     dependencies = [ pkgs.python3Packages.cryptography ];
+    nativeCheckInputs = [ pkgs.python3Packages.pytestCheckHook ];
+    enabledTestPaths = [ "tests/test_format.py" ];
     pythonImportsCheck = [
       "openappx"
       "openappx.deploy"

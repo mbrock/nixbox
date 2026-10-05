@@ -98,3 +98,19 @@
 -
  /**
   * @scripting
+--- a/src/video/sdl/sdl_video_system.cpp
++++ b/src/video/sdl/sdl_video_system.cpp
+@@ -38,6 +38,13 @@ SDLVideoSystem::SDLVideoSystem() :
+   m_lightmap(),
+   m_texture_manager()
+ {
++#ifdef SDL_PLATFORM_WINRT
++  // Xbox owns the fullscreen window; a desktop 1280x800 request leaves
++  // the renderer's viewport smaller than the console presentation surface.
++  g_config->use_fullscreen = true;
++  g_config->fullscreen_size = Size(0, 0);
++  g_config->window_size = m_desktop_size;
++#endif
+   create_window();
+ 
+   m_renderer.reset(new SDLScreenRenderer(*this, m_sdl_renderer.get()));

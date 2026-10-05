@@ -3,10 +3,10 @@
 [Back to the README](../README.md)
 
 Two games exercise the toolchain beyond the small SDL and Direct3D templates:
-an original physics arcade game and an existing-game port. Their Xbox runtime
-status is separate from their cross-build status: neither has yet been verified
-on the console. The development orb could not resolve the configured Device
-Portal hostname.
+an original physics arcade game and an existing-game port. Both have been
+deployed and exercised on a real Xbox through the `swa` runner on the Whale
+Justice tailnet. These are smoke tests, not full compatibility or performance
+certification; the coverage and remaining gaps are described below.
 
 ## Ricochet
 
@@ -16,6 +16,12 @@ the boxes into the green goal lane on the right. A target earns 100 points
 once it enters the lane moving slowly enough; hitting it alone does not score.
 Each round has 12 shots. Balls expire after 15 seconds, and the round finishes
 when all targets score or the last ball expires after ammunition runs out.
+
+Console checks exercised charging/firing, collisions and scoring (700 points,
+7/15 targets), aiming, and resetting to 12 shots and zero points. The HUD was
+inspected in console screenshots. Input was sent through Device Portal's remote
+keyboard; no physical controller was connected for these tests. Audio and
+persistent saves are not implemented in this prototype.
 
 | Action | Keyboard | Xbox controller |
 | --- | --- | --- |
@@ -74,6 +80,14 @@ UWP_DEVICE_URL=https://your-xbox.example nix run .#deploy-supertux
 nix develop .#supertux
 ```
 
+Console checks reached the main menu, world map and "Welcome to Antarctica"
+level, then exercised movement, jumping/landing, collecting a coin, pausing and
+relaunching. Config, profile and world-save files are written to LocalState;
+the config file was unchanged after relaunch. Restoring completed-level progress
+and non-default user options has not been tested. These checks used remote
+keyboard input, not a physical controller. Audio output remains unverified;
+no frame-rate claim is made from Device Portal screenshot timings.
+
 The dependency overlay in [nix/supertux-libraries.nix](../nix/supertux-libraries.nix)
 adds SDL3_image, SDL3_ttf, FreeType, HarfBuzz, PhysicsFS, OpenAL Soft, Vorbis,
 GLM and fmt to `pkgsXbox`. Important UWP differences:
@@ -82,7 +96,11 @@ GLM and fmt to `pkgsXbox`. Important UWP differences:
 - SDL3_ttf uses FreeType and HarfBuzz, without the optional SVG font backend.
 - PhysicsFS uses C++/WinRT for the package directory and writable LocalFolder.
 - Packaged game data lives alongside the executable, not in a desktop
-  `share/supertux` path. Saves belong in the app's writable storage.
+  `share/supertux` path. Mount that absolute path directly: desktop filesystem
+  canonicalization fails with access denied in the app container. Saves belong
+  in the app's writable storage.
+- UWP starts in desktop fullscreen at the display dimensions, rather than a
+  desktop 1280x800 window or an exclusive display-mode request.
 - FreeType uses its portable stdio backend. OpenAL uses its UWP WASAPI backend.
 - Box2D, ImGui, OpenAL, SDL3_image, SDL3_ttf, libpng and Vorbis use scalar paths
   where the current SDK/Clang intrinsic headers otherwise leave unresolved SSE
@@ -90,6 +108,12 @@ GLM and fmt to `pkgsXbox`. Important UWP differences:
 - Networking/add-on downloads, Discord, external text editors and desktop
   DbgHelp crash reporting are disabled. Device Portal supplies crash dumps.
 - The embedded Squirrel interpreter is static; shell execution is unavailable.
+
+The console installer also exposed an openappx content-types omission for
+extensionless files, such as `levels/world1/info`. The patched packer emits
+per-file overrides and runs format regression tests. `mkXboxApp` inspects the
+finished MSIX's block map and content types and saves `inspection.txt` alongside
+the package; an inspection failure now fails the build before deployment.
 
 Upstream code, artwork, music and fonts retain their respective licenses and
 credits. The package includes SuperTux's license and credits; this is a port,

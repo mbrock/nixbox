@@ -91,9 +91,9 @@ Two larger experiments live alongside the templates:
 nix run .#ricochet-native       # play/test the original game on the build host
 ```
 
-These are new cross-build experiments, **not yet verified on Xbox**. See
-[the game guide](docs/games.md) for controls, deployment, portability notes and
-the SDL3 GPU / OpenLara follow-ups.
+Both have real Xbox launch, rendering and remote-keyboard gameplay checks. See
+[the game guide](docs/games.md) for controls, deployment, verification coverage,
+remaining audio/save/controller checks, and the SDL3 GPU / OpenLara follow-ups.
 
 ## Nixpkgs, targeting Xbox
 

@@ -26,6 +26,10 @@ xbox.mkXboxApp {
     substituteInPlace src/supertux/main.cpp \
       --replace-fail 'u8"/console.out"' '"/console.out"' \
       --replace-fail 'u8"/console.err"' '"/console.err"'
+    # SDL already supplies the absolute package path. canonical() opens the
+    # directory through desktop filesystem APIs, which Xbox denies to apps.
+    substituteInPlace src/supertux/main.cpp \
+      --replace-fail 'std::filesystem::canonical(m_datadir).string()' 'm_datadir'
     # This object target does not inherit the game's WIN32 define.
     substituteInPlace external/findlocale/findlocale.c \
       --replace-fail 'WIN32' '_WIN32'

@@ -1,0 +1,44 @@
+--- a/src/openappx/blockmap.py
++++ b/src/openappx/blockmap.py
+@@ -238,5 +238,12 @@ def content_types_xml(package_paths: Sequence[str]) -> bytes:
+         '  <Override PartName="/AppxSignature.p7x" '
+         'ContentType="application/vnd.ms-appx.signature"/>'
+     )
++    for p in sorted(package_paths):
++        path = p.replace("\\", "/")
++        if not Path(path).suffix:
++            lines.append(
++                f'  <Override PartName="/{_xml_escape(path)}" '
++                'ContentType="application/octet-stream"/>'
++            )
+     lines.append("</Types>")
+     return ("\r\n".join(lines) + "\r\n").encode("utf-8")
+--- a/tests/test_format.py
++++ b/tests/test_format.py
+@@ -168,6 +168,26 @@ def test_unknown_extension_gets_a_content_type(tmp_path: Path):
+     assert 'Extension="qwerty"' in types
+ 
+ 
++def test_extensionless_parts_get_content_type_overrides(tmp_path: Path):
++    layout = tmp_path / "layout"
++    (layout / "levels" / "world1").mkdir(parents=True)
++    (layout / "AppxManifest.xml").write_text("<Package/>", encoding="utf-8")
++    (layout / "README").write_bytes(b"credits")
++    (layout / "levels" / "world1" / "info").write_bytes(b"level metadata")
++    (layout / "empty").write_bytes(b"")
++
++    out = pack_python(layout, tmp_path / "out.msix")
++    with zipfile.ZipFile(out) as zf:
++        types = ET.fromstring(zf.read("[Content_Types].xml"))
++    ns = "{http://schemas.openxmlformats.org/package/2006/content-types}"
++    overrides = {
++        entry.get("PartName"): entry.get("ContentType")
++        for entry in types.findall(f"{ns}Override")
++    }
++    for name in ["/README", "/levels/world1/info", "/empty"]:
++        assert overrides[name] == "application/octet-stream"
++
++
+ def test_pack_rejects_layout_without_manifest(tmp_path: Path):
+     layout = tmp_path / "layout"
+     layout.mkdir()

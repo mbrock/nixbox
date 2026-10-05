@@ -50,8 +50,8 @@ and direct build requests fail at evaluation. Native Linux packages are unaffect
 | Luau 0.738 | VM and bytecode compiler only; static CRT; availability-based unwinder selection | Wine gameplay test and real Xbox script execution |
 | GNU Hello 2.12.3 | UWP-compatible program name, getopt, handle, and file-opening code; NLS disabled | Six behavior checks under Wine |
 | SDL3 3.4.16 | Nixpkgs recipe overridden with the UWP fork and C++/WinRT patch; static CRT and library | SDL template build and real Xbox rendering/gamepad input |
-| Box2D 3.1.1 | Static library, scalar math, no desktop samples | Ricochet cross-build and native Release physics tests |
-| ImGui | SDL3 + SDLRenderer3 backends, scalar math; no GLFW/OpenGL/GPU | Ricochet cross-build and inspected native rendering |
+| Box2D 3.1.1 | Static library, scalar math, no desktop samples | Native Release physics tests and real Xbox Ricochet collisions/scoring/reset |
+| ImGui | SDL3 + SDLRenderer3 backends, scalar math; no GLFW/OpenGL/GPU | Inspected native rendering and real Xbox Ricochet HUD |
 
 [nix/arcade-libraries.nix](../nix/arcade-libraries.nix) owns the Box2D and ImGui
 adaptations. [nix/supertux-libraries.nix](../nix/supertux-libraries.nix) owns the
