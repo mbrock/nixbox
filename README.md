@@ -154,6 +154,8 @@ to add ports.
 | `nix build .#ssh-probe` | [Pinned-host-key SSH/SFTP diagnostic](probes/ssh/README.md); runtime test key required |
 | `nix build .#ghostty-vt-xbox` | Zig-built static terminal engine with installed C ABI |
 | `nix build .#ghostty-vt-probe` | [Unicode/CSI/history/reflow diagnostic](probes/ghostty-vt/README.md); no runtime configuration |
+| `nix build .#sbcl-platform-probe` | [SBCL platform feasibility diagnostic](probes/sbcl-platform/README.md): generated x64 code, page faults, unwind tables and TLS |
+| `nix build .#sbcl-platform-control` | Same diagnostic without `codeGeneration`, under a separate package identity |
 | `nix build .#hello` | The XAML sample's package |
 | `nix run .#deploy-hello` | Deploy it to the console |
 | `nix develop .#hello` | Its incremental build environment |

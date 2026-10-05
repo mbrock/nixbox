@@ -105,6 +105,11 @@
           };
           ssh-probe = import ./probes/ssh/probe.nix { xbox = xboxLib; };
           ghostty-vt-probe = import ./probes/ghostty-vt/probe.nix { xbox = xboxLib; };
+          sbcl-platform-probe = import ./probes/sbcl-platform/probe.nix { xbox = xboxLib; };
+          sbcl-platform-control = import ./probes/sbcl-platform/probe.nix {
+            xbox = xboxLib;
+            codeGeneration = false;
+          };
           # Wine runs midlrt for the XAML sample and MSBuild for the .vcxproj
           # route. Nixpkgs has no Wine for Apple silicon.
           hasWine = pkgs.stdenv.hostPlatform.isLinux;
@@ -136,6 +141,8 @@
                 nxt-chat
                 ssh-probe
                 ghostty-vt-probe
+                sbcl-platform-probe
+                sbcl-platform-control
                 ;
               zlib-xbox = pkgsXbox.zlib;
               hello-xbox = pkgsXbox.hello;
@@ -170,6 +177,8 @@
             deploy-nxt-chat = app.mkDeploy nxt-chat;
             deploy-ssh-probe = app.mkDeploy ssh-probe;
             deploy-ghostty-vt-probe = app.mkDeploy ghostty-vt-probe;
+            deploy-sbcl-platform-probe = app.mkDeploy sbcl-platform-probe;
+            deploy-sbcl-platform-control = app.mkDeploy sbcl-platform-control;
           }
           // withWine { deploy-hello = app.mkDeploy hello; };
           checks = {
@@ -188,6 +197,8 @@
               nxt-chat
               ssh-probe
               ghostty-vt-probe
+              sbcl-platform-probe
+              sbcl-platform-control
               ;
             zlib-xbox = pkgsXbox.zlib;
             hello-xbox = pkgsXbox.hello;
@@ -219,6 +230,7 @@
             nxt-chat = nxt-chat.devShell;
             ssh-probe = ssh-probe.devShell;
             ghostty-vt-probe = ghostty-vt-probe.devShell;
+            sbcl-platform-probe = sbcl-platform-probe.devShell;
           }
           // withWine {
             hello = hello.devShell;

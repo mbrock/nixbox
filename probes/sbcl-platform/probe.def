@@ -1,0 +1,6 @@
+LIBRARY KERNELBASE.dll
+EXPORTS
+  AddVectoredExceptionHandler
+  RemoveVectoredExceptionHandler
+  VirtualAlloc
+  VirtualProtect

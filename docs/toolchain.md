@@ -87,6 +87,15 @@ with Zig and supplies an installed C/pkg-config interface. It does not include
 Ghostty's GUI or render a terminal. The [VT consumer guide](../probes/ghostty-vt/README.md)
 describes the UWP restrictions and independent terminal-state assertions.
 
+The [SBCL platform probe](../probes/sbcl-platform/README.md) is a feasibility
+experiment, not an SBCL package. On Xbox it passed generated x64 code execution
+and patching, protected-page fault recovery, dynamic-frame SEH unwind and
+thread/TLS checks. Its explicit KERNELBASE desktop RWX and vectored-handler
+imports are isolated to the diagnostic; shared UWP compiler settings are not
+relaxed. The control package distinguishes FromApp capability enforcement from
+the observed desktop-export behavior. SBCL itself still needs a runtime/core
+build and UWP adaptation.
+
 ## NXT runtime, networking and graphical UI
 
 `pkgsXbox.nxtrt-iocp` builds the pinned [NXT](https://github.com/mbrock/nxtui)
