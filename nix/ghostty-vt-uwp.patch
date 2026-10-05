@@ -1,0 +1,126 @@
+--- a/src/terminal/page.zig
++++ b/src/terminal/page.zig
+@@ -59,7 +59,7 @@
+ /// MEM_COMMIT | MEM_RESERVE which guarantees zeroed pages.
+ const AllocWindows = struct {
+     pub fn alloc(n: usize) error{OutOfMemory}![]align(std.heap.page_size_min) u8 {
+-        const addr = windows.exp.kernel32.VirtualAlloc(
++        const addr = windows.exp.kernel32.VirtualAllocFromApp(
+             null,
+             n,
+             windows.MEM_COMMIT | windows.MEM_RESERVE,
+@@ -81,6 +81,27 @@
+     }
+ };
+ 
++/// UWP pages must use the App-family API, not Zig's NT page allocator.
++pub const windows_page_allocator: Allocator = .{
++    .ptr = undefined,
++    .vtable = &.{
++        .alloc = windowsPageAlloc,
++        .resize = Allocator.noResize,
++        .remap = Allocator.noRemap,
++        .free = windowsPageFree,
++    },
++};
++
++fn windowsPageAlloc(_: *anyopaque, len: usize, alignment: std.mem.Alignment, _: usize) ?[*]u8 {
++    // VirtualAllocFromApp reserves at allocation-granularity (64 KiB) boundaries.
++    if (alignment.toByteUnits() > 65536) return null;
++    return (AllocWindows.alloc(len) catch return null).ptr;
++}
++
++fn windowsPageFree(_: *anyopaque, memory: []u8, _: std.mem.Alignment, _: usize) void {
++    AllocWindows.free(@alignCast(memory));
++}
++
+ /// The allocator to use for multi-codepoint grapheme data. We use
+ /// a chunk size of 4 codepoints. It'd be best to set this empirically
+ /// but it is currently set based on vibes. My thinking around 4 codepoints
+--- a/src/terminal/PageList.zig
++++ b/src/terminal/PageList.zig
+@@ -576,6 +576,8 @@
+     // the allocator provided by the embedder.
+     if (native_freestanding) return alloc;
+ 
++    if (builtin.os.tag == .windows) return pagepkg.windows_page_allocator;
++
+     // On non-macOS we use our standard Zig page allocator.
+     if (!builtin.target.os.tag.isDarwin()) return std.heap.page_allocator;
+ 
+--- a/src/os/windows.zig
++++ b/src/os/windows.zig
+@@ -228,19 +228,19 @@
+         pub extern "kernel32" fn CloseHandle(
+             hObject: HANDLE,
+         ) callconv(.winapi) BOOL;
+-        pub extern "kernel32" fn VirtualAlloc(
++        pub extern "c" fn VirtualAllocFromApp(
+             lpAddress: ?LPVOID,
+             dwSize: SIZE_T,
+             flAllocationType: DWORD,
+             flProtect: DWORD,
+         ) callconv(.winapi) ?LPVOID;
+-        pub extern "kernel32" fn VirtualFree(
++        pub extern "c" fn VirtualFree(
+             lpAddress: ?LPVOID,
+             dwSize: SIZE_T,
+             dwFreeType: DWORD,
+         ) callconv(.winapi) BOOL;
+         /// https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-discardvirtualmemory
+-        pub extern "kernel32" fn DiscardVirtualMemory(
++        pub extern "c" fn DiscardVirtualMemory(
+             VirtualAddress: PVOID,
+             Size: SIZE_T,
+         ) callconv(.winapi) DWORD;
+--- a/src/lib/TinyIo.zig
++++ b/src/lib/TinyIo.zig
+@@ -35,7 +35,7 @@
+ /// unsupported platforms `io()` still works but every operation fails
+ /// like `std.Io.failing`.
+ pub const supported: bool = switch (builtin.os.tag) {
+-    .wasi, .freestanding, .other, .uefi => false,
++    .windows, .wasi, .freestanding, .other, .uefi => false,
+     else => true,
+ };
+ 
+--- a/src/build/GhosttyLibVt.zig
++++ b/src/build/GhosttyLibVt.zig
+@@ -264,9 +264,7 @@
+                 lib.root_module.stack_protector = false;
+             }
+ 
+-            // The Zig standard library uses NT and kernel32 symbols.
+-            lib.root_module.linkSystemLibrary("ntdll", .{});
+-            lib.root_module.linkSystemLibrary("kernel32", .{});
++            // The UWP consumer resolves App-family APIs via WindowsApp.lib.
+         }
+     }
+ 
+--- a/src/os/stderr.zig
++++ b/src/os/stderr.zig
+@@ -17,22 +17,8 @@
+     switch (builtin.os.tag) {
+         .freestanding, .other => {},
+ 
+-        .windows => {
+-            const windows = std.os.windows;
+-            const handle = windows.peb().ProcessParameters.hStdError;
+-            var iosb: windows.IO_STATUS_BLOCK = undefined;
+-            _ = windows.ntdll.NtWriteFile(
+-                handle,
+-                null, // event
+-                null, // APC routine
+-                null, // APC context
+-                &iosb,
+-                bytes.ptr,
+-                @intCast(bytes.len),
+-                null, // byte offset
+-                null, // key
+-            );
+-        },
++        // UWP has no standard error handle. C ABI logging uses the host callback.
++        .windows => {},
+ 
+         else => {
+             const posix = std.posix;

@@ -1,0 +1,44 @@
+diff --git a/src/openssl.c b/src/openssl.c
+--- a/src/openssl.c
++++ b/src/openssl.c
+@@ -44,6 +44,40 @@
+ #include <stdlib.h>
+ #include <assert.h>
+ 
++/* UWP libcrypto has no stdio backend. Keep libssh2's file APIs working
++ * through the app CRT, without enabling OpenSSL's desktop file helpers. */
++#ifdef OPENSSL_NO_STDIO
++static BIO *uwp_key_bio(const char *filename)
++{
++    FILE *file = fopen(filename, "rb");
++    BIO *bio;
++    char buffer[4096];
++    size_t count;
++    if(!file)
++        return NULL;
++    bio = BIO_new(BIO_s_mem());
++    if(!bio) {
++        fclose(file);
++        return NULL;
++    }
++    BIO_set_flags(bio, BIO_FLAGS_NONCLEAR_RST);
++    while((count = fread(buffer, 1, sizeof(buffer), file)) != 0) {
++        if(BIO_write(bio, buffer, (int)count) != (int)count) {
++            BIO_free(bio);
++            fclose(file);
++            return NULL;
++        }
++    }
++    if(ferror(file)) {
++        BIO_free(bio);
++        bio = NULL;
++    }
++    fclose(file);
++    return bio;
++}
++#define BIO_new_file(filename, mode) uwp_key_bio(filename)
++#endif
++
+ int _libssh2_hmac_ctx_init(libssh2_hmac_ctx *ctx)
+ {
+ #ifdef USE_OPENSSL_3

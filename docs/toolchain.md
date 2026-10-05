@@ -52,6 +52,8 @@ and direct build requests fail at evaluation. Native Linux packages are unaffect
 | SDL3 3.4.16 | Nixpkgs recipe overridden with the UWP fork and C++/WinRT patch; static CRT and library | SDL template build and real Xbox rendering/gamepad input |
 | Box2D 3.1.1 | Static library, scalar math, no desktop samples | Native Release physics tests and real Xbox Ricochet collisions/scoring/reset |
 | ImGui | SDL3 + SDLRenderer3 backends, scalar math; no GLFW/OpenGL/GPU | Inspected native rendering and real Xbox Ricochet HUD |
+| libssh2 1.11.1 | Nixpkgs source/security backports; static UWP libcrypto/zlib; no desktop agents; CRT-to-memory BIO file adapter | Isolated consumer, Wine and real Xbox host-key rejection/auth/exec/SFTP tests |
+| libghostty-vt (pinned preview) | Zig 0.16, static C ABI, offline dependencies; App-family allocation, no NT/filesystem backend, SIMD/Kitty graphics off | Installed native and UWP/Wine C consumers, entire-archive import allowlist, real Xbox Unicode/CSI/history/reflow/page-pool checks |
 
 [nix/arcade-libraries.nix](../nix/arcade-libraries.nix) owns the Box2D and ImGui
 adaptations. [nix/supertux-libraries.nix](../nix/supertux-libraries.nix) owns the
@@ -73,6 +75,17 @@ output alongside the headers and pkg-config file.
 fixes. The [configure experiment notes](../nix/experiments/hello-configure.txt)
 explain the failures that led to them. Hello uses console CRT startup and is
 not an Xbox-launchable UWP application.
+
+The [libssh2 recipe](../nix/libssh2.nix) uses OpenSSL's crypto primitives, not
+its TLS library. Applications supply Winsock sockets and must verify the
+server host key before authenticating. The [SSH probe](../probes/ssh/README.md)
+documents the disposable fixed-command fixture and runtime-only key provisioning.
+This port is not yet an NXT coroutine SSH adapter or an interactive terminal.
+
+The [Ghostty VT recipe](../nix/ghostty-vt.nix) cross-compiles the terminal engine
+with Zig and supplies an installed C/pkg-config interface. It does not include
+Ghostty's GUI or render a terminal. The [VT consumer guide](../probes/ghostty-vt/README.md)
+describes the UWP restrictions and independent terminal-state assertions.
 
 ## NXT runtime, networking and graphical UI
 

@@ -149,6 +149,10 @@ to add ports.
 | `nix build .#nxtrt-iocp-xbox` | NXT's C++23 runtime, IOCP networking, HTTP/TLS and Responses transport |
 | `nix build .#nxtui-sdl-xbox` | Renderer-neutral character/line layouts and SDL3_ttf painting |
 | `nix build .#nxt-chat` | Graphical GPT-6 Luna chat app; runtime credential required |
+| `nix build .#libssh2-xbox` | Static SSH/SFTP library with UWP libcrypto and zlib |
+| `nix build .#ssh-probe` | [Pinned-host-key SSH/SFTP diagnostic](probes/ssh/README.md); runtime test key required |
+| `nix build .#ghostty-vt-xbox` | Zig-built static terminal engine with installed C ABI |
+| `nix build .#ghostty-vt-probe` | [Unicode/CSI/history/reflow diagnostic](probes/ghostty-vt/README.md); no runtime configuration |
 | `nix build .#hello` | The XAML sample's package |
 | `nix run .#deploy-hello` | Deploy it to the console |
 | `nix develop .#hello` | Its incremental build environment |

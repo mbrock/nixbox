@@ -1,0 +1,47 @@
+diff --git a/build.zig b/build.zig
+--- a/build.zig
++++ b/build.zig
+@@ -137,7 +137,7 @@ pub fn build(b: *std.Build) !void {
+                 &mod,
+             );
+         }
+-        if (native_freestanding) break :shared null;
++        if (config.emit_lib_vt or native_freestanding) break :shared null;
+ 
+         break :shared try buildpkg.GhosttyLibVt.initShared(
+             b,
+diff --git a/src/build/GhosttyZig.zig b/src/build/GhosttyZig.zig
+--- a/src/build/GhosttyZig.zig
++++ b/src/build/GhosttyZig.zig
+@@ -123,7 +123,7 @@ fn initVt(
+         // no-libcxx mode (HWY_NO_LIBCXX / SIMDUTF_NO_LIBCXX) so we
+         // don't need libcpp. System-provided simdutf headers still
+         // use C++ stdlib headers, so we need libcpp in that case.
+-        .link_libc = if (cfg.simd) true else null,
++        .link_libc = if (cfg.simd or cfg.target.result.os.tag == .windows) true else null,
+         .link_libcpp = if (cfg.simd and
+             b.systemIntegrationOption("simdutf", .{}) and
+             cfg.target.result.abi != .msvc) true else null,
+diff --git a/src/build/GhosttyLibVt.zig b/src/build/GhosttyLibVt.zig
+--- a/src/build/GhosttyLibVt.zig
++++ b/src/build/GhosttyLibVt.zig
+@@ -230,6 +230,8 @@ fn initLib(
+         .root_module = zig.vt_c,
+         .version = zig.version,
+     });
++    // Use LLVM for archives consumed by external C toolchains.
++    lib.use_llvm = true;
+     lib.installHeadersDirectory(
+         b.path("include/ghostty"),
+         "ghostty",
+@@ -241,7 +243,9 @@ fn initLib(
+         // Otherwise, you get undefined symbol errors. This could cause
+         // problems if you're linking multiple static Zig libraries but
+         // we'll cross that bridge when we get to it.
+-        lib.bundle_compiler_rt = true;
++        // Native C consumers use their compiler runtime and libm. Zig 0.16's
++        // bundled native x86_64 compiler-rt contains invalid ELF relocations.
++        lib.bundle_compiler_rt = target.result.os.tag == .windows;
+         lib.bundle_ubsan_rt = true;
+ 
+         // Enable PIC so the static library can be linked into PIE

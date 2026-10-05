@@ -98,6 +98,8 @@
             xbox = xboxLib;
             nxtuiSource = inputs.nxtui;
           };
+          ssh-probe = import ./probes/ssh/probe.nix { xbox = xboxLib; };
+          ghostty-vt-probe = import ./probes/ghostty-vt/probe.nix { xbox = xboxLib; };
           # Wine runs midlrt for the XAML sample and MSBuild for the .vcxproj
           # route. Nixpkgs has no Wine for Apple silicon.
           hasWine = pkgs.stdenv.hostPlatform.isLinux;
@@ -126,6 +128,8 @@
                 d3d12caps
                 nxt-network
                 nxt-chat
+                ssh-probe
+                ghostty-vt-probe
                 ;
               zlib-xbox = pkgsXbox.zlib;
               hello-xbox = pkgsXbox.hello;
@@ -138,6 +142,8 @@
               harfbuzz-xbox = pkgsXbox.harfbuzz;
               nxtrt-iocp-xbox = pkgsXbox.nxtrt-iocp;
               nxtui-sdl-xbox = pkgsXbox.nxtui-sdl;
+              libssh2-xbox = pkgsXbox.libssh2;
+              ghostty-vt-xbox = pkgsXbox.ghostty-vt;
               xbox-cxx-headers = xbox.cxxHeaders;
               xbox-cc = xbox.xboxCC;
             };
@@ -155,6 +161,8 @@
             deploy-d3d12caps = app.mkDeploy d3d12caps;
             deploy-nxt-network = app.mkDeploy nxt-network;
             deploy-nxt-chat = app.mkDeploy nxt-chat;
+            deploy-ssh-probe = app.mkDeploy ssh-probe;
+            deploy-ghostty-vt-probe = app.mkDeploy ghostty-vt-probe;
           }
           // withWine { deploy-hello = app.mkDeploy hello; };
           checks = {
@@ -170,16 +178,27 @@
               supertux
               nxt-network
               nxt-chat
+              ssh-probe
+              ghostty-vt-probe
               ;
             zlib-xbox = pkgsXbox.zlib;
             hello-xbox = pkgsXbox.hello;
             luau-xbox = pkgsXbox.luau;
             nxtrt-iocp-xbox = pkgsXbox.nxtrt-iocp;
             nxtui-sdl-consumer = import ./nix/check-nxtui-sdl.nix { xbox = xboxLib; };
+            libssh2-consumer = import ./nix/check-libssh2.nix { xbox = xboxLib; };
+            ghostty-vt-consumer = pkgsXbox.callPackage ./nix/check-ghostty-vt.nix {
+              inherit llvmPackages;
+              wine = if hasWine then pkgs.wineWow64Packages.stable else null;
+            };
           }
           // withWine {
             inherit hello;
             hello-vcxproj = toolchain.hello;
+            ghostty-vt-native = pkgs.callPackage ./nix/check-ghostty-vt.nix {
+              ghostty-vt = pkgs.callPackage ./nix/ghostty-vt.nix { };
+              inherit llvmPackages;
+            };
           };
           devShells = {
             game = game.devShell;
@@ -189,6 +208,8 @@
             d3d12caps = d3d12caps.devShell;
             nxt-network = nxt-network.devShell;
             nxt-chat = nxt-chat.devShell;
+            ssh-probe = ssh-probe.devShell;
+            ghostty-vt-probe = ghostty-vt-probe.devShell;
           }
           // withWine {
             hello = hello.devShell;

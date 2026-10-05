@@ -79,6 +79,8 @@ let
     SDL3 = final.sdl3;
     # NXT owns the portable runtime's build and installed consumer check.
     openssl-uwp = final.callPackage (inputs.nxtui + "/nix/openssl-uwp.nix") { };
+    libssh2 = final.callPackage ./libssh2.nix { libssh2 = prev.libssh2; };
+    ghostty-vt = final.callPackage ./ghostty-vt.nix { inherit sdk; };
     nxtrt-iocp = final.callPackage (inputs.nxtui + "/nix/iocp.nix") {
       cryptoLibrary = final.openssl-uwp;
       # The transport uses Boost headers, not its POSIX libraries.
