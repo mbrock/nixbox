@@ -102,3 +102,14 @@ The same C checks have passed as a console consumer under Wine 11.0. That run
 validates the probe's generated instructions, SEH/unwind metadata and assertions;
 it is not Xbox policy validation. In particular Wine accepted FromApp RWX
 protection even though Microsoft's documented contract rejects it.
+
+## First SBCL build attempt
+
+The pinned Nixpkgs SBCL 2.6.8 recipe was tried through `pkgsXbox`. With a native
+bootstrap Lisp and optional core compression disabled, it reaches SBCL's
+configuration but selects the Linux host OS, then fails linking a target helper
+against `libdl`. No SBCL runtime/core was produced. The
+[reproducible experiment](../../nix/experiments/sbcl-cross.nix) and
+[failure notes](../../nix/experiments/sbcl-cross.txt) record the baseline and
+follow-ups. The next build needs explicit Win32 target configuration and separate
+host/target execution stages, not a `dl.lib` shim.

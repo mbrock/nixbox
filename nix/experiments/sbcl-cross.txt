@@ -1,0 +1,62 @@
+SBCL through pkgsXbox: first build experiment (2026-10-05)
+
+Pinned Nixpkgs recipe/source: SBCL 2.6.8. Linux build host, nixbox's existing
+x86_64-pc-windows-msvc Clang 23 / static Microsoft CRT cross stdenv.
+
+Baseline, no overrides:
+  nix build .#legacyPackages.x86_64-linux.pkgsXbox.sbcl --keep-failed
+
+Evaluation rejects SBCL because the recipe's meta.platforms excludes Windows.
+With NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 and --impure, evaluation reaches the
+bootstrap Lisp dependency and then rejects an unfree win-sdk. Permitting unfree
+packages for that invocation reaches a separate Visual Studio license-acceptance
+gate. No license setting was changed and no extra SDK was built. The existing
+Xbox SDK/toolchain was not the failing dependency: the recipe's default ECL
+bootstrap reference was selecting target-side packages.
+
+Bounded follow-up: use native Linux SBCL for bootstrapLisp and native coreutils
+for the recipe's substituted command paths; override only this derivation's
+platform metadata. This gets past the bootstrap/evaluation gates, but default
+coreCompression pulls in target zstd, whose target grep/PCRE2 dependencies fail
+before SBCL itself builds. PCRE2's pcre2grep.c reports 14 compilation errors.
+This is not evidence of an SBCL runtime/compiler failure.
+
+Second follow-up: disable optional core compression so the build reaches SBCL:
+  nix build --impure --file nix/experiments/sbcl-cross.nix --keep-failed -L
+
+The recipe unpacks/patches the pinned source, accepts the native bootstrap SBCL,
+then enters make-config.sh. It chooses sbcl_arch="x86-64" and detects the OS
+using the build host's uname. The generated local-target-features.lisp-expr
+contains :unix :linux :elf :gcc-tls :use-sys-mmap :largefile, despite the C
+compiler being the Windows-targeting x86_64-pc-windows-msvc-clang.
+
+The decisive configuration-helper command and failure are:
+  x86_64-pc-windows-msvc-clang -I../src/runtime -Wunused-parameter \
+    -fno-omit-frame-pointer -momit-leaf-frame-pointer \
+    determine-endianness.c -ldl -o determine-endianness
+  lld-link: error: could not open 'dl.lib': No such file or directory
+
+This is not a request to add libdl to the Xbox SDK. SBCL has selected its Linux
+configuration. No SBCL runtime or Lisp core was produced, and nothing from this
+build was run on Xbox. The earlier platform probe remains independent evidence
+that generated code, page faults, unwind registration and thread/TLS primitives
+can work on the console.
+
+Source inspection explains the next boundary:
+  - make-config.sh derives sbcl_os from uname and does not consume Nix's host
+    triple. --xc-host chooses the bootstrap Lisp, not the target operating system.
+  - tools-for-build helpers are compiled with the selected compiler, then run
+    directly by the scripts. Merely forcing win32 will not provide a Linux
+    execution path for PE helpers or the target runtime used during warm init.
+  - src/runtime/Config.x86-64-win32 selects GCC and GNU PE linker flags/definition
+    files; it is not an existing MSVC-targeted Clang configuration.
+  - make.sh documents separate host and target stages; its one-machine sequence
+    is not a turnkey Nixpkgs Linux-to-Windows cross build.
+
+Next useful experiment: configure an explicit x64 Win32 target, keep native
+bootstrap/build tools distinct from target header groveling and runtime stages,
+and supply a Wine execution path where target programs must run. Only then do
+runtime C/assembly compilation and UWP API errors become meaningful evidence.
+Do not fake grovel results, silently compile the Linux backend, or globally mark
+pkgsXbox.sbcl supported. This experiment intentionally remains outside the flake's
+successful packages/checks until a real target build works.
