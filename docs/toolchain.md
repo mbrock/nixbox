@@ -115,7 +115,10 @@ DNS/socket/TLS runtime. Operations are **serialized**, including send versus
 receive; a background reader cannot coexist with interactive sends. Cancelling
 an operation drains it and aborts that connection. See the
 [WebSocket guide](../probes/nxt-network/README.md) for API boundaries, fixtures
-and Xbox provisioning.
+and Xbox provisioning. The SDL-hosted diagnostic passed 91 ws/wss cases on
+Xbox, including independently verified 16 MiB delivery and stable pending
+send-wish cancellation/draining/reconnect. Its localhost Windows/Wine suite
+passes 92 cases; the extra wrong-SAN case is explicitly skipped on remote IPs.
 
 `pkgsXbox.nxtui-sdl` enables the separate `nxtui-sdl` pkg-config target.
 Layouts use fractional character/line units and emit clipped rectangles and

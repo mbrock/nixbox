@@ -65,19 +65,38 @@ the 16 MiB plaintext send completed in 90 ms and cancelled its 2000 ms timer;
 the encrypted send cancelled in 2005 ms after its timer completed. The failure
 is therefore an unmet pending-send precondition in these runs, not evidence of
 ignored cancellation. The underlying buffering behavior is not established,
-and plaintext send-cancellation remains unverified on hardware. This is not a
-green hardware suite. The
+and those runs did not verify plaintext send-cancellation on hardware. The
 [verification thread](https://ampcode.com/threads/T-01a10a83-643e-70c7-9fad-afd92b717fc2)
 contains the exact-package report and preserved failure evidence.
+
+The current probe independently verifies all bytes of a 16 MiB asymmetric
+payload before accepting a SHA-256 receipt. Its cancellation workload uses
+bounded 64 KiB consecutive messages (256 MiB total budget), and requires the
+same parked task/token/parking timestamp with no completed-frame progress
+across 100 ms before requesting stop. It then checks cancellation, terminal
+connection state and same-deck reconnect. This is send-wish evidence, not
+direct kernel inspection. Budget exhaustion or missing pending evidence fails
+the case; completed/failed sends are not accepted as cancellation. The installed
+Windows/Wine suite passes **92 tests, 0 failures**, with zero fixture assertions.
+No production runtime or WebSocket API changes were needed for these checks.
+
+The final matching package passed **91 tests, 0 failures on real Xbox Series X**
+on 2026-10-05, with the localhost-only wrong-SAN case explicitly skipped. Both
+transports delivered the full independently checked 16 MiB vector and passed
+stable send-wish cancellation, terminal-state and same-deck reconnect checks.
+The fixture reported zero assertions. Temporary listeners, private fixture
+keys and console public certificates/arguments were removed. Earlier 89/1
+results remain preserved; they are not retroactively counted as passing runs.
 
 ## Fixture and runtime provisioning
 
 Use `test/websocket-fixture.py` from the NXT revision pinned in `flake.lock`.
 It requires Python 3 and `openssl`, creates disposable one-day TLS certificates,
-and serves both valid exchanges and intentionally malformed/stalled peers.
+and serves both valid exchanges and intentionally malformed/stalled peers. Use
+the matching revision: earlier fixtures lack the `/large-send` route.
 For a local installed CLI/Wine run, pass the installed `websocket-probe.exe`
-with the script's `--wine PATH_TO_WINE` option; the script manages the fixture
-and checks server-side assertions.
+with the script's `--wine PATH_TO_WINE --cancel-ms 2000` options; the script
+manages the fixture and checks server-side assertions.
 
 For Xbox, choose an IPv4 address actually reachable from the console and two
 already-permitted TCP ports. Runner tailnet access does not imply console
@@ -107,17 +126,18 @@ ABSOLUTE_LOCALSTATE_PATH\wrong.pem
 2000
 ```
 
-Bases have no trailing slash. The final argument is the cancellation delay in
-milliseconds (default 100, allowed 20–5000); the probe uses a 15-second deadline
+Bases have no trailing slash. The final argument is the initial cancellation
+delay in milliseconds (default 100, allowed 20–5000); send cancellation also
+requires the 100 ms stable-wish observation. The probe uses a 15-second deadline
 per case. Launch the app after provisioning. It shows RUNNING/PASSED/FAILED and
 the start of its report; **read the full `network.txt` for the summary and any
-failure details**, since 90 case lines do not fit on one screen.
+failure details**, since the full suite does not fit on one screen.
 
-The localhost suite includes wrong-SAN rejection. A remote advertised-IP run
-explicitly skips that localhost-only case and executes 89 cases; untrusted-root
-rejection still runs. Do not count a SKIP as a PASS or ignore a nonzero failure
-summary. Stop the fixture and remove its private directory and console
-certificates/argument file after testing. The report contains no credentials.
+The 92-case localhost suite includes wrong-SAN rejection. A remote advertised-IP
+run explicitly skips that localhost-only case and executes 91 cases;
+untrusted-root rejection still runs. Do not count a SKIP as a PASS or ignore a
+nonzero failure summary. Stop the fixture and remove its private directory and
+console certificates/argument file after testing. The report contains no credentials.
 
 For the existing DNS/socket/TLS and real Luna `nxt-network` diagnostic, see the
 [chat app's transport checks](../../apps/nxt-chat/README.md#diagnostics-and-build-checks).
