@@ -156,6 +156,9 @@ to add ports.
 | `nix build .#ghostty-vt-probe` | [Unicode/CSI/history/reflow diagnostic](probes/ghostty-vt/README.md); no runtime configuration |
 | `nix build .#sbcl-platform-probe` | [SBCL platform feasibility diagnostic](probes/sbcl-platform/README.md): generated x64 code, page faults, unwind tables and TLS |
 | `nix build .#sbcl-platform-control` | Same diagnostic without `codeGeneration`, under a separate package identity |
+| `nix build .#sbcl-runtime` | Cross-built SBCL 2.6.8 runtime/core with Wine Lisp checks; Linux host required |
+| `nix build .#sbcl-probe` | [Embedded Common Lisp diagnostic](probes/sbcl/README.md): compiler, GC, threads and file I/O |
+| `nix run .#deploy-sbcl-probe` | Deploy the Lisp diagnostic to the console |
 | `nix build .#hello` | The XAML sample's package |
 | `nix run .#deploy-hello` | Deploy it to the console |
 | `nix develop .#hello` | Its incremental build environment |
@@ -173,6 +176,12 @@ animated cube on the hardware device, zlib round-trips data,
 and Luau compiles and executes a script with three native callbacks. The script
 returns **health = 46**, which drives the on-screen health bar. Wine checks also
 cover C++ exception unwinding and a port of GNU Hello.
+
+The [SBCL probe](probes/sbcl/README.md) also runs real Common Lisp on the console:
+all 14 checks pass, including native compilation, full GC, Lisp threads,
+Unicode file I/O and compiling/loading a FASL. It embeds a cross-built SBCL
+runtime/core in an SDL UWP app; contrib/ASDF and an interactive REPL are not
+packaged yet.
 
 This is an experimental **x64 UWP toolchain using the static Microsoft CRT**.
 New Nixpkgs packages may need portability fixes. A cross-built Windows executable

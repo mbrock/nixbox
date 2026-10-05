@@ -1,0 +1,449 @@
+diff --git a/src/code/filesys.lisp b/src/code/filesys.lisp
+index 9356ecb..dfa7607 100644
+--- a/src/code/filesys.lisp
++++ b/src/code/filesys.lisp
+@@ -1308,8 +1308,18 @@ Experimental: interface subject to change."
+       (sb-kernel::%file-error pathspec "bad place for a wild pathname"))
+     (let* ((host (pathname-host pathname))
+            (dir (pathname-directory pathname))
+-           (dev (pathname-device pathname)))
+-      (loop for i from (case dev (:unc 3) (otherwise 2))
++           (dev (pathname-device pathname))
++           (start (case dev (:unc 3) (otherwise 2))))
++      #+win32
++      ;; An app container can access LocalState without being able to probe
++      ;; its ancestors. Start at the deepest existing directory, not the root.
++      (loop for i from (length dir) downto start
++            for parent = (make-pathname :host host :device dev
++                                        :directory (subseq dir 0 i))
++            when (eq :directory
++                     (native-file-kind (native-namestring parent :as-file t) t))
++              do (setf start (1+ i)) (return))
++      (loop for i from start
+               upto (length dir)
+             do
+             (let* ((newpath (make-pathname
+diff --git a/src/code/warm-lib.lisp b/src/code/warm-lib.lisp
+index 9d6c5c3..bfdb289 100644
+--- a/src/code/warm-lib.lisp
++++ b/src/code/warm-lib.lisp
+@@ -6,7 +6,8 @@
+ #+win32
+ (progn
+   (load-shared-object "kernel32.dll")
+-  (load-shared-object #+ucrt "ucrtbase.dll" #-ucrt "msvcrt.dll")
++  ;; The Xbox runtime exports its static CRT. Loading a second CRT would
++  ;; give Lisp and C different file-descriptor and errno tables.
+   (load-shared-object "advapi32.dll")
+   (load-shared-object "ws2_32.dll")
+   (load-shared-object "shell32.dll"))
+diff --git a/src/cold/exports.lisp b/src/cold/exports.lisp
+index 88eecf0..ec04ecc 100644
+--- a/src/cold/exports.lisp
++++ b/src/cold/exports.lisp
+@@ -1358,7 +1358,7 @@ interface stability.")
+    ;; errors
+ 
+    "EAGAIN" "EBADF" "EEXIST" "EINTR" "EIO" "ELOOP" "ENOENT"
+-   "EPIPE" "EWOULDBLOCK"
++   "ENOTDIR" "EPIPE" "EWOULDBLOCK"
+ 
+    "POLLFD" "POLLIN" "POLLOUT" "POLLHUP" "POLLNVAL" "POLLERR"
+    "FD" "EVENTS" "REVENTS"
+diff --git a/src/compiler/x86-64/alloc.lisp b/src/compiler/x86-64/alloc.lisp
+index 37a9ee6..99147c3 100644
+--- a/src/compiler/x86-64/alloc.lisp
++++ b/src/compiler/x86-64/alloc.lisp
+@@ -213,6 +213,7 @@
+ (define-vop (sb-c::end-pseudo-atomic)
+   (:generator 1 (emit-end-pseudo-atomic)))
+ 
++#+sb-simd-pack-512
+ (defun avx512-tn-p (tn)
+   (sc-is tn int-avx512-reg double-avx512-reg single-avx512-reg mask-reg))
+ 
+@@ -1227,6 +1228,7 @@
+   (:temporary (:sc unsigned-reg :offset rbx-offset) rbx)
+   (:temporary (:sc unsigned-reg :offset rcx-offset) rcx)
+   (:temporary (:sc unsigned-reg) header)
++  #+sb-simd-pack-512
+   (:save-p :avx512)
+   (:generator 1
+     ;; fixedobj_pages alien linkage entry: 1 PTE per page, 12-byte struct
+diff --git a/src/compiler/x86-64/target-avx2-insts.lisp b/src/compiler/x86-64/target-avx2-insts.lisp
+index dfaf4d5..42919ef 100644
+--- a/src/compiler/x86-64/target-avx2-insts.lisp
++++ b/src/compiler/x86-64/target-avx2-insts.lisp
+@@ -117,7 +117,6 @@
+   (print-xmmreg/mem-with-width
+    value (inst-operand-size-default-qword dstate) t stream dstate))
+ 
+-#+sb-simd-pack-512
+ (defun print-opmask-register (value stream dstate)
+   (declare (ignore dstate))
+   (if stream
+diff --git a/src/runtime/Config.x86-64-win32 b/src/runtime/Config.x86-64-win32
+index d770cfc..95bf6e0 100644
+--- a/src/runtime/Config.x86-64-win32
++++ b/src/runtime/Config.x86-64-win32
+@@ -31,14 +31,14 @@ endif
+ # (You *are* encouraged to design and implement a coherent stable
+ # interface, though.:-| As far as I (WHN 2002-05-19) know, no one is
+ # working on one and it would be a nice thing to have.)
+-LINKFLAGS = -Wl,-export-all-symbols
+-LIBSBCL += mswin64.def mswin.def
+-USE_LIBSBCL += -Wl,mswin64.def -Wl,mswin.def
+-SOFLAGS += -Wl,-export-all-symbols -Wl,mswin64.def -Wl,mswin.def
++LINKFLAGS = -Wl,/def:sbcl.def,/dynamicbase:no
++LIBSBCL += sbcl.def nixbox-kernelbase.lib
++USE_LIBSBCL += nixbox-kernelbase.lib
++SOFLAGS += -Wl,/def:sbcl.def
+ 
+ __LDFLAGS__ =
+ 
+-OS_LIBS = -l ws2_32 -ladvapi32
++OS_LIBS = -l ws2_32 -ladvapi32 -lshell32
+ ifdef LISP_FEATURE_SB_CORE_COMPRESSION
+   OS_LIBS += -lzstd
+ endif
+@@ -63,6 +63,5 @@ CFLAGS += -g -W -Wall \
+ 
+ CC = gcc
+ 
+-ifeq ($(shell $(LD) --disable-dynamicbase 2>&1 | grep disable-dynamicbase),)
+-LINKFLAGS += -Wl,--disable-dynamicbase
+-endif
++nixbox-kernelbase.lib: nixbox-kernelbase.def
++	lld-link /lib /machine:x64 /def:$< /out:$@
+diff --git a/src/runtime/GNUmakefile b/src/runtime/GNUmakefile
+index aaa8a1b..396cd17 100644
+--- a/src/runtime/GNUmakefile
++++ b/src/runtime/GNUmakefile
+@@ -89,6 +89,16 @@ SRCS = $(C_SRC) ${ASSEM_SRC}
+ 
+ OBJS = $(C_SRC:.c=.o) $(ASSEM_SRC:.S=.o) ../../tlsf-bsd/tlsf/tlsf.o
+ 
++# Clang's MSVC linker does not implement GNU ld's export-all-symbols.
++# Declare prerequisites here, after OBJS, so parallel builds export all objects.
++sbcl.def: $(OBJS)
++	$(NM) -g --defined-only --format=posix $(OBJS) > sbcl-symbols.tmp
++	{ echo EXPORTS; awk '$$2 ~ /^[TDBR]$$/ && $$1 ~ /^[A-Za-z_][A-Za-z_0-9]*$$/ {print $$1}' sbcl-symbols.tmp | sort -u; \
++	  printf '%s\n' _errno _getpid _get_osfhandle _open_osfhandle _close _access _unlink _exit exit \
++	    malloc realloc free getenv strerror memcpy memmove memcmp strlen tmpfile fclose \
++	    floor floorf ceil ceilf trunc truncf sin cos tan atan atan2 acos asin cosh sinh tanh \
++	    asinh acosh atanh hypot exp log log10 pow log1p log2; } > $@
++
+ LIBS = ${OS_LIBS} $(LDLIBS) -lm
+ 
+ ifdef LISP_FEATURE_SB_SAFEPOINT
+@@ -107,7 +117,7 @@ ldb: $(LIBSBCL)
+ 		$(LDB_OBJS) $(LIBS)
+ 
+ $(TARGET): $(LIBSBCL)
+-	$(CC) ${LINKFLAGS} -o $@ $(USE_LIBSBCL) $(LIBS)
++	$(CC) ${LINKFLAGS} -o $@ $(USE_LIBSBCL) $(filter-out -lm,$(LIBS))
+ 	$(SBCL_PAXCTL) $@
+ 
+ # tests/heap-reloc/fake-mman.c supports linux and x86-64-darwin.
+diff --git a/build-output/sbcl-runtime-work/src/runtime/nixbox-kernelbase.def b/src/runtime/nixbox-kernelbase.def
+new file mode 100644
+index 0000000..74992be
+--- /dev/null
++++ b/src/runtime/nixbox-kernelbase.def
+@@ -0,0 +1,7 @@
++LIBRARY KERNELBASE.dll
++EXPORTS
++  VirtualAlloc
++  VirtualProtect
++  AddVectoredExceptionHandler
++  SetThreadStackGuarantee
++  SetStdHandle
+diff --git a/build-output/sbcl-runtime-work/src/runtime/nixbox-win32.h b/src/runtime/nixbox-win32.h
+new file mode 100644
+index 0000000..64bb966
+--- /dev/null
++++ b/src/runtime/nixbox-win32.h
+@@ -0,0 +1,44 @@
++#ifndef SBCL_NIXBOX_WIN32_H
++#define SBCL_NIXBOX_WIN32_H
++#ifndef __ASSEMBLER__
++
++/* SBCL-local MSVC compatibility and deliberate Developer Mode imports.
++ * Keep the shared SDK's app partition intact. VirtualAlloc/Protect must be
++ * the real exports: the SDK's inline FromApp wrappers reject RWX allocation. */
++#ifdef SBCL_HEADER_GROVEL
++/* The build helper extracts desktop constants but never calls those APIs.
++ * Select its partition before any Windows headers, not halfway through them. */
++#undef WINAPI_FAMILY
++#define WINAPI_FAMILY WINAPI_FAMILY_DESKTOP_APP
++#endif
++#define WIN32_LEAN_AND_MEAN
++#define VirtualAlloc sbcl_sdk_VirtualAlloc
++#define VirtualProtect sbcl_sdk_VirtualProtect
++#include <winsock2.h>
++#include <windows.h>
++#undef VirtualAlloc
++#undef VirtualProtect
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++#include <io.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++
++typedef unsigned short mode_t;
++typedef intptr_t ssize_t;
++#define strcasecmp _stricmp
++#define getpid() ((int)GetCurrentProcessId())
++/* Real CRT implementation, omitted only by the SDK's desktop header guard. */
++_ACRTIMP char* __cdecl getenv(const char*);
++
++__declspec(dllimport) LPVOID WINAPI VirtualAlloc(LPVOID, SIZE_T, DWORD, DWORD);
++__declspec(dllimport) BOOL WINAPI VirtualProtect(LPVOID, SIZE_T, DWORD, PDWORD);
++__declspec(dllimport) PVOID WINAPI AddVectoredExceptionHandler(ULONG, PVECTORED_EXCEPTION_HANDLER);
++__declspec(dllimport) BOOL WINAPI SetThreadStackGuarantee(PULONG);
++__declspec(dllimport) LPWSTR* WINAPI CommandLineToArgvW(LPCWSTR, int*);
++__declspec(dllimport) HRESULT WINAPI SHGetFolderPathA(HWND, int, HANDLE, DWORD, LPSTR);
++__declspec(dllimport) BOOL WINAPI CryptGenRandom(ULONG_PTR, DWORD, BYTE*);
++
++#endif
++#endif
+diff --git a/src/runtime/runtime.c b/src/runtime/runtime.c
+index 14a982b..59ddde1 100644
+--- a/src/runtime/runtime.c
++++ b/src/runtime/runtime.c
+@@ -441,6 +441,19 @@ read_memsize_from_env(void) {
+   }
+ }
+ 
++#ifdef LISP_FEATURE_WIN32
++/* The SDL host supplies a Unicode argument vector before initialize_lisp.
++ * Standalone SBCL keeps the upstream process-command-line behavior. */
++wchar_t **nixbox_lisp_argv;
++static wchar_t **win32_lisp_argv(int *argc)
++{
++    if (!nixbox_lisp_argv) return CommandLineToArgvW(GetCommandLineW(), argc);
++    *argc = 0;
++    while (nixbox_lisp_argv[*argc]) ++*argc;
++    return nixbox_lisp_argv;
++}
++#endif
++
+ static struct cmdline_options
+ parse_argv(struct memsize_options memsize_options,
+            int argc, char *argv[], char *envp[], char *core)
+@@ -493,7 +506,7 @@ parse_argv(struct memsize_options memsize_options,
+ #else
+             int wargc;
+             wchar_t **argv_source;
+-            argv_source = CommandLineToArgvW(GetCommandLineW(), &wargc);
++            argv_source = win32_lisp_argv(&wargc);
+             sbcl_argv = checked_malloc((wargc + 1) * sizeof(wchar_t *));
+ #endif
+             sbcl_argv[0] = argv_source[0];
+@@ -514,7 +527,7 @@ parse_argv(struct memsize_options memsize_options,
+             sbcl_argv = argv;
+ #else
+             int wargc;
+-            sbcl_argv = CommandLineToArgvW(GetCommandLineW(), &wargc);
++            sbcl_argv = win32_lisp_argv(&wargc);
+ #endif
+         }
+     } else {
+@@ -611,7 +624,7 @@ parse_argv(struct memsize_options memsize_options,
+              * has been for a long time. */
+             int wargc;
+             wchar_t** wargv;
+-            wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
++            wargv = win32_lisp_argv(&wargc);
+             sbcl_argv = checked_malloc((((argi < wargc) ? (wargc - argi) : 0) + 2)
+                                           * sizeof(wchar_t *));
+             sbcl_argv[0] = wargv[0];
+diff --git a/src/runtime/win32-os.h b/src/runtime/win32-os.h
+index f219115..bde393d 100644
+--- a/src/runtime/win32-os.h
++++ b/src/runtime/win32-os.h
+@@ -25,8 +25,10 @@
+ #include <sys/stat.h>
+ #include <io.h>
+ #ifdef _MSC_VER
++#ifndef SBCL_NIXBOX_WIN32_H
+ typedef intptr_t ssize_t;
+ #endif
++#endif
+ 
+ #include "target-arch-os.h"
+ #include "target-arch.h"
+diff --git a/src/runtime/wrap.c b/src/runtime/wrap.c
+index b21b189..bd454a6 100644
+--- a/src/runtime/wrap.c
++++ b/src/runtime/wrap.c
+@@ -21,7 +21,9 @@
+ #include "genesis/sbcl.h"
+ 
+ #include <sys/types.h>
++#ifndef _MSC_VER
+ #include <dirent.h>
++#endif
+ #include <sys/stat.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -148,6 +150,65 @@ char * sb_realpath (char *path)
+  *
+  * Once that is done, the lisp side functions are best named OS-OPENDIR, etc.
+  */
++#ifdef _MSC_VER
++struct sb_directory {
++    intptr_t handle;
++    struct __finddata64_t entry;
++    int first;
++};
++
++struct sb_directory* sb_opendir(char* name)
++{
++    struct _stat st;
++    if (_stat(name, &st) < 0) return NULL;
++    if ((st.st_mode & _S_IFMT) != _S_IFDIR) {
++        errno = ENOTDIR;
++        return NULL;
++    }
++    struct sb_directory* dir = malloc(sizeof(*dir));
++    char* pattern = malloc(strlen(name) + 3);
++    if (!dir || !pattern) {
++        free(dir);
++        free(pattern);
++        errno = ENOMEM;
++        return NULL;
++    }
++    sprintf(pattern, "%s\\*", name);
++    dir->handle = _findfirst64(pattern, &dir->entry);
++    free(pattern);
++    dir->first = dir->handle != -1;
++    if (dir->handle == -1 && errno != ENOENT) {
++        free(dir);
++        return NULL;
++    }
++    return dir;
++}
++
++struct __finddata64_t* sb_readdir(struct sb_directory* dir)
++{
++    errno = 0;
++    if (dir->handle == -1) return NULL;
++    if (dir->first) {
++        dir->first = 0;
++        return &dir->entry;
++    }
++    if (_findnext64(dir->handle, &dir->entry) == 0) return &dir->entry;
++    if (errno == ENOENT) errno = 0;
++    return NULL;
++}
++
++int sb_closedir(struct sb_directory* dir)
++{
++    int result = dir->handle == -1 ? 0 : _findclose(dir->handle);
++    free(dir);
++    return result;
++}
++
++char* sb_dirent_name(struct __finddata64_t* entry)
++{
++    return entry->name;
++}
++#else
+ extern DIR *
+ sb_opendir(char * name)
+ {
+@@ -176,6 +237,7 @@ sb_dirent_name(struct dirent * ent)
+ {
+     return ent->d_name;
+ }
++#endif
+ 
+ /*
+  * stat(2) stuff
+@@ -484,23 +546,43 @@ int wstopsig(int status) {
+ /* From SB-POSIX, stat-macros */
+ int s_isreg(mode_t mode)
+ {
++#ifdef _MSC_VER
++    return (mode & _S_IFMT) == _S_IFREG;
++#else
+     return S_ISREG(mode);
++#endif
+ }
+ int s_isdir(mode_t mode)
+ {
++#ifdef _MSC_VER
++    return (mode & _S_IFMT) == _S_IFDIR;
++#else
+     return S_ISDIR(mode);
++#endif
+ }
+ int s_ischr(mode_t mode)
+ {
++#ifdef _MSC_VER
++    return (mode & _S_IFMT) == _S_IFCHR;
++#else
+     return S_ISCHR(mode);
++#endif
+ }
+ int s_isblk(mode_t mode)
+ {
++#ifdef _MSC_VER
++    return 0; /* The Windows CRT does not represent block devices. */
++#else
+     return S_ISBLK(mode);
++#endif
+ }
+ int s_isfifo(mode_t mode)
+ {
++#ifdef _MSC_VER
++    return (mode & _S_IFMT) == _S_IFIFO;
++#else
+     return S_ISFIFO(mode);
++#endif
+ }
+ #ifndef LISP_FEATURE_WIN32
+ int s_islnk(mode_t mode)
+diff --git a/src/runtime/x86-64-win32-os.h b/src/runtime/x86-64-win32-os.h
+index 04a2d55..2d479e0 100644
+--- a/src/runtime/x86-64-win32-os.h
++++ b/src/runtime/x86-64-win32-os.h
+@@ -1,6 +1,11 @@
+ #ifndef _X86_64_WIN32_OS_H
+ #define _X86_64_WIN32_OS_H
+ 
++#ifdef _MSC_VER
++/* Microsoft's x64 SDK spelling of MinGW's XMM_SAVE_AREA32 member. */
++#define FloatSave FltSave
++#endif
++
+ typedef struct os_context_t {
+   CONTEXT* win32_context;
+   sigset_t sigmask;
+diff --git a/tools-for-build/Makefile b/tools-for-build/Makefile
+index 0c45040..3866699 100644
+--- a/tools-for-build/Makefile
++++ b/tools-for-build/Makefile
+@@ -17,6 +17,8 @@ LDLIBS:=$(OS_LIBS)
+ 
+ all: grovel-headers determine-endianness where-is-mcontext mmap-rwx avx2
+ 
++grovel-headers: CFLAGS += -DSBCL_HEADER_GROVEL
++
+ perfecthash: ../src/runtime/perfecthash.c
+ 	$(CC) -DDEFINE_MAIN $(LINKFLAGS) $(CPPFLAGS) $(CFLAGS) -o $@ $^
+ 
+diff --git a/tools-for-build/grovel-headers-win32.inc b/tools-for-build/grovel-headers-win32.inc
+index a5cf91e..61e771b 100644
+--- a/tools-for-build/grovel-headers-win32.inc
++++ b/tools-for-build/grovel-headers-win32.inc
+@@ -196,6 +196,7 @@
+     defconstant("o_noinherit", _O_NOINHERIT);
+ 
+     defconstant("enoent", ENOENT);
++    defconstant("enotdir", ENOTDIR);
+     defconstant("eexist", EEXIST);
+     defconstant("eintr", EINTR);
+     defconstant("eagain", EAGAIN);

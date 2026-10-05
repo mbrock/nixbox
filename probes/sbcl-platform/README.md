@@ -89,8 +89,8 @@ Device results, rather than desktop Windows or Wine behavior, determine which
 paths are usable on Xbox Developer Mode.
 
 These successes remove important platform unknowns, but do not prove SBCL
-works. SBCL's bootstrap/core loading, target compiler/runtime build,
-symbol resolution and desktop filesystem/console adaptations remain. The
+works. The [embedded SBCL probe](../sbcl/README.md) now exercises a real runtime,
+core, compiler and heap separately from this platform diagnostic. The
 probe does not exercise a Lisp heap, GC, simultaneous code execution/patching,
 multithreaded safepoints, SBCL's register/TLS layout, large address-space
 reservations, suspend/resume or a REPL. If only RW-to-RX works, an SBCL adaptation
@@ -110,13 +110,14 @@ bootstrap Lisp and optional core compression disabled, the first attempt selecte
 the Linux host OS and failed linking a target helper against `libdl`.
 
 The follow-up now explicitly selects Win32, executes configuration helpers under
-Wine, and keeps native build tools separate from target programs. The bootstrap
-cross-compiler and first genesis complete. After initial MSVC-header fixes,
-35 amd64 COFF runtime objects compile, including the assembly, thread code and
-generational collector. Compilation still fails on MinGW directory/CRT facilities,
-Microsoft exception-context field names, and desktop APIs hidden by UWP headers.
-No SBCL executable or target Lisp core was produced or deployed to Xbox. The
+Wine, and keeps native build tools separate from target programs. Local MSVC
+header/runtime adaptations now compile all 44 runtime objects, link the Windows
+executable and embedding archive, and complete cold and warm initialization.
+The saved core passes 14 Lisp checks during the Nix build under Wine. The
+packaged SDL host now passes all 14 on the real Xbox too, including native
+compilation, full GC, Lisp threads, Unicode I/O and FASL loading.
+See the [Lisp probe](../sbcl/README.md) for device results and limits. The
 [reproducible experiment](../../nix/experiments/sbcl-cross.nix) and
 [build notes](../../nix/experiments/sbcl-cross.txt) record the exact progress and
-remaining boundaries. The next step is a localized MSVC/UWP runtime adaptation,
-not a `dl.lib` shim or relaxing the shared toolchain's API-family settings.
+adaptations. No `dl.lib` shim or relaxation of the shared toolchain's API-family
+settings was needed.

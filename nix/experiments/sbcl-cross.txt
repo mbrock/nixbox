@@ -3,6 +3,37 @@ SBCL through pkgsXbox: cross-build experiments (2026-10-05)
 Pinned Nixpkgs recipe/source: SBCL 2.6.8. Linux build host, nixbox's existing
 x86_64-pc-windows-msvc Clang 23 / static Microsoft CRT cross stdenv.
 
+Current reproducer:
+  source bin/nix-cache-options
+  nix build "${nix_options[@]}" .#sbcl-runtime --keep-failed -L
+  nix build "${nix_options[@]}" .#sbcl-probe -L
+
+All 44 runtime objects now compile. The executable links, cold/warm init
+complete under Wine, and the installed artifacts include a full Lisp core and
+embedding archive. sbcl-msvc-runtime.patch adapts directory/stat wrappers,
+context field spelling, desktop memory imports, PE exports/static CRT foreign
+symbols, and injected Unicode arguments. AVX-512 is disabled; three feature
+guards in the compiler needed correction for this configuration.
+
+The same 14-check script used by the SDL app passes in the Nix build under Wine.
+Cross stdenv disables ordinary target checkPhase execution, so this recipe
+explicitly executes its Wine checks after warm init. Wine's Unix-drive Unicode
+filenames require LANG=C.UTF-8; LANG=C reproducibly fails the Unicode test.
+No failed Lisp checks are accepted as a successful build.
+
+The packaged runtime/core now passes all 14 checks on a real Xbox Series X.
+The live dump from an early startup timeout identified recursive C++ math
+exports selected by LLD's fuzzy .def matching; C object export directives fixed
+it. Reopening stderr before dup2 fixed the Xbox's initial -2 CRT descriptor.
+Windows directory creation now starts at the deepest existing directory,
+avoiding inaccessible sandbox ancestors; a hidden-ancestor Wine regression
+and the actual Xbox directory checks pass. See probes/sbcl/README.md for device
+results and limits. This remains a Developer Mode experiment, not Store API
+compliance or a complete SBCL distribution with contrib/ASDF.
+
+Historical checkpoints below (superseded by the runtime/core build above)
+----------------------------------------------------------------------
+
 Baseline, no overrides:
   nix build .#legacyPackages.x86_64-linux.pkgsXbox.sbcl --keep-failed
 
@@ -53,8 +84,8 @@ Source inspection explains the next boundary:
   - make.sh documents separate host and target stages; its one-machine sequence
     is not a turnkey Nixpkgs Linux-to-Windows cross build.
 
-Win32 follow-up (current reproducer)
------------------------------------
+First Win32 follow-up (historical)
+---------------------------------
 
 sbcl-cross.nix now explicitly selects WindowsNT in make-config.sh, uses the Xbox
 C compiler in Config.x86-64-win32, and runs configuration/feature PE helpers
@@ -106,7 +137,7 @@ The native thread API and CPUID declaration errors disappeared after adding
 their actual headers. No shared compiler settings, SDK-family restrictions or
 global package-platform metadata were relaxed.
 
-Reproduce from the repository root (new patch files must be git-added):
+Command used at that checkpoint (not the current reproducer):
   source bin/nix-cache-options
   nix build "${nix_options[@]}" --impure --file nix/experiments/sbcl-cross.nix \
     --keep-failed --out-link build-output/sbcl-cross -L
@@ -117,10 +148,10 @@ It fails in make-target-1.sh's runtime compilation, before linking, target heade
 groveling, make-host-2.sh or target cold/warm initialization. The groveler's Wine
 execution path is wired but not yet exercised. The remaining target stages and
 installation also need adaptation; this is not a finished package recipe.
-No SBCL executable or target Lisp core was produced, and no SBCL build was
-deployed to Xbox. The experiment remains outside successful flake packages/checks.
+No SBCL executable or target Lisp core was produced at that checkpoint, and
+the experiment was then outside successful flake packages/checks.
 
-Next useful step: a localized MSVC/UWP runtime adaptation for these concrete
+The next step was a localized MSVC/UWP runtime adaptation for these concrete
 boundaries, followed by translating the GNU PE export/linker configuration and
 running the target initialization under Wine. Only a real runtime/core wrapped
 in an Xbox app can establish SBCL-on-console success. Do not fake grovel results,

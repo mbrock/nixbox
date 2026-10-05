@@ -111,6 +111,11 @@
             xbox = xboxLib;
             codeGeneration = false;
           };
+          sbcl-runtime = import ./nix/experiments/sbcl-cross.nix { inherit pkgs pkgsXbox; };
+          sbcl-probe = import ./probes/sbcl/probe.nix {
+            xbox = xboxLib;
+            sbcl = sbcl-runtime;
+          };
           # Wine runs midlrt for the XAML sample and MSBuild for the .vcxproj
           # route. Nixpkgs has no Wine for Apple silicon.
           hasWine = pkgs.stdenv.hostPlatform.isLinux;
@@ -125,7 +130,7 @@
           packages =
             (if hasWine then toolchain.packages else removeAttrs toolchain.packages wineTools)
             // withWine {
-              inherit hello;
+              inherit hello sbcl-runtime sbcl-probe;
               hello-vcxproj = toolchain.hello;
             }
             // {
@@ -183,7 +188,10 @@
             deploy-sbcl-platform-probe = app.mkDeploy sbcl-platform-probe;
             deploy-sbcl-platform-control = app.mkDeploy sbcl-platform-control;
           }
-          // withWine { deploy-hello = app.mkDeploy hello; };
+          // withWine {
+            deploy-hello = app.mkDeploy hello;
+            deploy-sbcl-probe = app.mkDeploy sbcl-probe;
+          };
           checks = {
             xbox-compiler = import ./nix/check-compiler.nix {
               inherit pkgs llvmPackages;
@@ -215,7 +223,7 @@
             };
           }
           // withWine {
-            inherit hello;
+            inherit hello sbcl-runtime sbcl-probe;
             hello-vcxproj = toolchain.hello;
             ghostty-vt-native = pkgs.callPackage ./nix/check-ghostty-vt.nix {
               ghostty-vt = pkgs.callPackage ./nix/ghostty-vt.nix { };
@@ -238,6 +246,7 @@
           }
           // withWine {
             hello = hello.devShell;
+            sbcl-probe = sbcl-probe.devShell;
             default = pkgs.mkShell {
               packages = [
                 toolchain.tools
