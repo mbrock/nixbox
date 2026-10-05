@@ -1,18 +1,21 @@
 // Reports what Direct3D 12 offers a Developer Mode UWP app on this console:
 // feature level, shader model, mesh shaders, ray tracing, wave operations,
-// and the rest of the capabilities a modern renderer depends on. The report
-// is drawn on screen and written to LocalState/d3d12-caps.txt.
+// and the rest of the capabilities a modern renderer depends on; format
+// support; the display; live tests of binding and render-target patterns;
+// and measured throughput. The report is drawn on screen and written to
+// LocalState/nixbox/d3d12-caps/d3d12-caps.txt.
+#include "report.h"
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
 #include <d3d12.h>
 #include <dxgi1_4.h>
 
+#include <cstdarg>
 #include <cstdio>
 #include <string>
 #include <vector>
-
-namespace {
 
 std::vector<std::string> lines;
 
@@ -26,6 +29,8 @@ void line(const char *format, ...)
     lines.emplace_back(buffer);
     SDL_Log("%s", buffer);
 }
+
+namespace {
 
 template <typename T>
 bool query(ID3D12Device *device, D3D12_FEATURE feature, T &data)
@@ -107,15 +112,42 @@ void describe_device(ID3D12Device *device)
              o0.ConservativeRasterizationTier, o0.ROVsSupported,
              o0.TypedUAVLoadAdditionalFormats);
 
+    if (query(device, D3D12_FEATURE_D3D12_OPTIONS, o0))
+        line("max GPU VA bits per resource %u, standard swizzle 64K %d, double %d, "
+             "PS stencil ref %d, RT array index from VS %d",
+             o0.MaxGPUVirtualAddressBitsPerResource, o0.StandardSwizzle64KBSupported,
+             o0.DoublePrecisionFloatShaderOps, o0.PSSpecifiedStencilRefSupported,
+             o0.VPAndRTArrayIndexFromAnyShaderFeedingRasterizerSupportedWithoutGSEmulation);
+
+    D3D12_FEATURE_DATA_ROOT_SIGNATURE root{D3D_ROOT_SIGNATURE_VERSION_1_1};
+    if (query(device, D3D12_FEATURE_ROOT_SIGNATURE, root))
+        line("root signature version 1.%d", root.HighestVersion == D3D_ROOT_SIGNATURE_VERSION_1_1);
+
+    D3D12_FEATURE_DATA_GPU_VIRTUAL_ADDRESS_SUPPORT va{};
+    if (query(device, D3D12_FEATURE_GPU_VIRTUAL_ADDRESS_SUPPORT, va))
+        line("GPU VA bits: %u per resource, %u per process",
+             va.MaxGPUVirtualAddressBitsPerResource, va.MaxGPUVirtualAddressBitsPerProcess);
+
+    D3D12_FEATURE_DATA_SHADER_CACHE cache{};
+    if (query(device, D3D12_FEATURE_SHADER_CACHE, cache))
+        line("shader cache flags 0x%x", cache.SupportFlags);
+
     D3D12_FEATURE_DATA_D3D12_OPTIONS1 o1{};
     if (query(device, D3D12_FEATURE_D3D12_OPTIONS1, o1))
         line("wave ops %d, lanes %u..%u, int64 shader ops %d", o1.WaveOps,
              o1.WaveLaneCountMin, o1.WaveLaneCountMax, o1.Int64ShaderOps);
 
+    D3D12_FEATURE_DATA_D3D12_OPTIONS2 o2{};
+    if (query(device, D3D12_FEATURE_D3D12_OPTIONS2, o2))
+        line("depth bounds test %d, programmable sample positions tier %d",
+             o2.DepthBoundsTestSupported, o2.ProgrammableSamplePositionsTier);
+
     D3D12_FEATURE_DATA_D3D12_OPTIONS3 o3{};
     if (query(device, D3D12_FEATURE_D3D12_OPTIONS3, o3))
-        line("view instancing tier %d, barycentrics %d", o3.ViewInstancingTier,
-             o3.BarycentricsSupported);
+        line("view instancing tier %d, barycentrics %d, copy queue timestamps %d, "
+             "write buffer immediate 0x%x",
+             o3.ViewInstancingTier, o3.BarycentricsSupported, o3.CopyQueueTimestampQueriesSupported,
+             o3.WriteBufferImmediateSupportFlags);
 
     D3D12_FEATURE_DATA_D3D12_OPTIONS4 o4{};
     if (query(device, D3D12_FEATURE_D3D12_OPTIONS4, o4))
@@ -145,11 +177,25 @@ void describe_device(ID3D12Device *device)
              o9.AtomicInt64OnTypedResourceSupported,
              o9.AtomicInt64OnGroupSharedSupported, o9.WaveMMATier);
 
+    D3D12_FEATURE_DATA_D3D12_OPTIONS8 o8{};
+    if (query(device, D3D12_FEATURE_D3D12_OPTIONS8, o8))
+        line("unaligned block textures %d", o8.UnalignedBlockTexturesSupported);
+
     D3D12_FEATURE_DATA_D3D12_OPTIONS12 o12{};
     if (query(device, D3D12_FEATURE_D3D12_OPTIONS12, o12))
         line("enhanced barriers %d", o12.EnhancedBarriersSupported);
     else
         line("enhanced barriers: query failed");
+
+    D3D12_FEATURE_DATA_D3D12_OPTIONS13 o13{};
+    if (query(device, D3D12_FEATURE_D3D12_OPTIONS13, o13))
+        line("unrestricted copy pitch %d, inverted viewport height %d",
+             o13.UnrestrictedBufferTextureCopyPitchSupported, o13.InvertedViewportHeightFlipsYSupported);
+
+    D3D12_FEATURE_DATA_D3D12_OPTIONS16 o16{};
+    if (query(device, D3D12_FEATURE_D3D12_OPTIONS16, o16))
+        line("GPU upload heap %d, dynamic depth bias %d", o16.GPUUploadHeapSupported,
+             o16.DynamicDepthBiasSupported);
 
     D3D12_FEATURE_DATA_D3D12_OPTIONS21 o21{};
     if (query(device, D3D12_FEATURE_D3D12_OPTIONS21, o21))
@@ -167,9 +213,9 @@ void write_report()
         for (const std::string &text : lines)
             std::fprintf(file, "%s\n", text.c_str());
         std::fclose(file);
-        line("report: %s", path.c_str());
+        SDL_Log("report: %s", path.c_str());
     } else {
-        line("report: could not write %s", path.c_str());
+        SDL_Log("report: could not write %s", path.c_str());
     }
 }
 
@@ -182,23 +228,6 @@ int main(int, char **)
         return 1;
     }
 
-    MEMORYSTATUSEX memory{sizeof memory};
-    if (GlobalMemoryStatusEx(&memory))
-        line("process memory: %llu MB physical available of %llu MB, %llu MB commit",
-             memory.ullAvailPhys >> 20, memory.ullTotalPhys >> 20, memory.ullTotalPageFile >> 20);
-    describe_adapter();
-    ID3D12Device *device = nullptr;
-    const HRESULT created = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0,
-                                              __uuidof(ID3D12Device),
-                                              reinterpret_cast<void **>(&device));
-    if (SUCCEEDED(created)) {
-        describe_device(device);
-        device->Release();
-    } else {
-        line("D3D12CreateDevice failed: 0x%08lx", static_cast<unsigned long>(created));
-    }
-    write_report();
-
     SDL_Window *window = nullptr;
     SDL_Renderer *renderer = nullptr;
     if (!SDL_CreateWindowAndRenderer("D3D12 capabilities", 1920, 1080, SDL_WINDOW_FULLSCREEN,
@@ -207,7 +236,37 @@ int main(int, char **)
         return 1;
     }
     SDL_SetRenderVSync(renderer, 1);
+    int width = 0, height = 0;
+    SDL_GetRenderOutputSize(renderer, &width, &height);
+    line("SDL window: %d x %d pixels, renderer %s", width, height, SDL_GetRendererName(renderer));
 
+    MEMORYSTATUSEX memory{sizeof memory};
+    if (GlobalMemoryStatusEx(&memory))
+        line("process memory: %llu MB physical available of %llu MB, %llu MB commit",
+             memory.ullAvailPhys >> 20, memory.ullTotalPhys >> 20, memory.ullTotalPageFile >> 20);
+    describe_display();
+    line("-- device");
+    describe_adapter();
+    ID3D12Device *device = nullptr;
+    const HRESULT created = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0,
+                                              __uuidof(ID3D12Device),
+                                              reinterpret_cast<void **>(&device));
+    if (SUCCEEDED(created)) {
+        describe_device(device);
+        describe_formats(device);
+        write_report();
+        run_gpu_tests(device);
+        device->Release();
+    } else {
+        line("D3D12CreateDevice failed: 0x%08lx", static_cast<unsigned long>(created));
+    }
+    write_report();
+
+    // Columns of debug text, scaled so a 4K output reads like 1080p.
+    const float scale = height >= 2000 ? 2.0f : 1.0f;
+    const float logical_width = width / scale, logical_height = height / scale;
+    const float step = 10, top = 32;
+    const int per_column = int((logical_height - top - 16) / step);
     for (bool running = true; running;) {
         SDL_Event event;
         while (SDL_PollEvent(&event))
@@ -216,12 +275,12 @@ int main(int, char **)
         SDL_SetRenderDrawColorFloat(renderer, 0.05f, 0.07f, 0.11f, 1);
         SDL_RenderClear(renderer);
         SDL_SetRenderDrawColorFloat(renderer, 1, 1, 1, 1);
-        SDL_SetRenderScale(renderer, 2, 2);
-        SDL_RenderDebugText(renderer, 24, 24, "Direct3D 12 capabilities (Developer Mode UWP)");
-        float y = 44;
-        for (const std::string &text : lines) {
-            SDL_RenderDebugText(renderer, 24, y, text.c_str());
-            y += 12;
+        SDL_SetRenderScale(renderer, scale, scale);
+        SDL_RenderDebugText(renderer, 16, 12, "Direct3D 12 capabilities (Developer Mode UWP)");
+        for (size_t i = 0; i < lines.size(); ++i) {
+            const int column = int(i) / per_column, row = int(i) % per_column;
+            SDL_RenderDebugText(renderer, 16 + column * logical_width / 2,
+                                top + row * step, lines[i].c_str());
         }
         SDL_SetRenderScale(renderer, 1, 1);
         SDL_RenderPresent(renderer);

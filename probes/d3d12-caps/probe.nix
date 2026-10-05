@@ -9,11 +9,17 @@ xbox.mkXboxApp {
     fileset = xbox.pkgs.lib.fileset.unions [
       ./meson.build
       ./main.cpp
+      ./report.h
+      ./formats.cpp
+      ./gpu.cpp
+      ./display.cpp
+      ./probe.hlsl
     ];
   };
   nativeBuildInputs = [
     xbox.pkgs.meson
     xbox.pkgs.ninja
+    xbox.pkgs.directx-shader-compiler
     xbox.pkgsXbox.buildPackages.pkg-config
   ];
   buildInputs = [ xbox.pkgsXbox.SDL3 ];
