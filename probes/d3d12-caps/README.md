@@ -8,12 +8,15 @@ nix build .#d3d12caps
 UWP_DEVICE_URL=https://your-xbox.example nix run .#deploy-d3d12caps
 ```
 
-Xbox Series X, retail console in Developer Mode, package type "App"
-(2026-10-05):
+Xbox Series X, retail console in Developer Mode, OS 10.0.26100.9438
+(2026-10-05). Installed as an *App*, the process sees 832 MB of shared GPU
+memory; installed as a *Game* (see [App or game](../../docs/apps.md#app-or-game)),
+it sees 5120 MB of physical memory and 4096 MB shared. The feature set is
+identical in both:
 
 | Capability | Value |
 | --- | --- |
-| Adapter | `SraKmd_arden` (1414:d000), 512 MB dedicated, 832 MB shared |
+| Adapter | `SraKmd_arden` (1414:d000), 512 MB dedicated |
 | Max feature level | 11_0 |
 | Highest shader model | 6.4 |
 | Memory | cache-coherent UMA |

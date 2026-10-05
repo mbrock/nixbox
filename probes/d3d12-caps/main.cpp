@@ -182,6 +182,10 @@ int main(int, char **)
         return 1;
     }
 
+    MEMORYSTATUSEX memory{sizeof memory};
+    if (GlobalMemoryStatusEx(&memory))
+        line("process memory: %llu MB physical available of %llu MB, %llu MB commit",
+             memory.ullAvailPhys >> 20, memory.ullTotalPhys >> 20, memory.ullTotalPageFile >> 20);
     describe_adapter();
     ID3D12Device *device = nullptr;
     const HRESULT created = D3D12CreateDevice(nullptr, D3D_FEATURE_LEVEL_11_0,

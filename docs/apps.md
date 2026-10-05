@@ -196,6 +196,27 @@ The console comes from `--device`, `UWP_DEVICE_URL`, or
 `~/.config/nixbox/device`. `UWP_DEVICE_USER` and `OPENAPPX_DEVICE_PASSWORD`
 supply Device Portal credentials.
 
+## App or game
+
+The console installs a sideloaded package as an *App* (about 1 GB of memory
+and a share of the GPU) unless its Preferences setting
+`DefaultUWPContentTypeToGame` is on; then new installs are *Games* (5 GB, the
+whole GPU, exclusive CPU cores). Dev Home can change one package by hand; the
+setting can be flipped remotely through Device Portal, which wants its CSRF
+cookie echoed back, followed by a restart and a fresh deploy:
+
+```sh
+url=https://your-xbox.example jar=$(mktemp)
+curl -s -c $jar $url/ext/settings/DefaultUWPContentTypeToGame
+token=$(awk '$6=="CSRF-Token"{print $7}' $jar)
+curl -s -b $jar -H "X-CSRF-Token: $token" -H 'Content-Type: application/json' \
+  -X PUT -d '{"Value":"True"}' $url/ext/settings/DefaultUWPContentTypeToGame
+curl -s -m 10 -b $jar -H "X-CSRF-Token: $token" -X POST $url/api/control/restart
+```
+
+Either way Direct3D 12 stays at feature level 11_0; see
+[the capability probe](../probes/d3d12-caps/README.md).
+
 ## When a launch fails
 
 Device Portal reports `0x8027025B` for any app that dies during startup. The
