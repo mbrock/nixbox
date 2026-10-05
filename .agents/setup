@@ -3,6 +3,7 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
 SECONDS=0
+trap 'echo "[setup +${SECONDS}s] Failed at line $LINENO" >&2' ERR
 
 echo "[setup] Checking Nix installation prerequisites"
 missing=()
@@ -33,17 +34,25 @@ setting='extra-experimental-features = nix-command flakes'
 if ! grep -Fqx "$setting" "$config" 2>/dev/null; then
   printf '\n%s\n' "$setting" >> "$config"
 fi
+echo "[setup +${SECONDS}s] Nix ready"
 
-# These profiles keep the shell closures alive across Nix garbage collection.
+# Root the shared toolchain against Nix garbage collection. App-specific
+# shells are prepared on demand: hello builds its XAML projection and libraries,
+# and sdlgame can compile SDL3 from source even with cache credentials.
 # Cache credentials are temporary and removed before snapshot publication.
 source "$root/bin/nix-cache-options"
+if [[ -r "$cache_netrc" ]]; then
+  echo "[setup +${SECONDS}s] Authenticated binary cache enabled"
+else
+  echo "[setup +${SECONDS}s] No binary cache credentials; using public substitutes and source builds"
+fi
 state="$HOME/.cache/nixbox-orb"
 mkdir -p "$state"
-for shell in default hello game sdlgame; do
-  echo "[setup +${SECONDS}s] Preparing development shell: $shell"
-  nix develop "${nix_options[@]}" \
-    --no-update-lock-file --profile "$state/$shell" "$root#$shell" --command true
-done
+echo "[setup +${SECONDS}s] Preparing default development shell"
+started=$SECONDS
+nix develop "${nix_options[@]}" \
+  --no-update-lock-file --profile "$state/default" "$root#default" --command true
+echo "[setup +${SECONDS}s] Default development shell ready ($((SECONDS - started))s)"
 
 # Amp and supervised services use non-interactive login shells. Inject the
 # complete environment, including shellHook, without spawning a nested shell.
@@ -64,4 +73,4 @@ marker='# nixbox orb development environment'
 if ! grep -Fqx "$marker" "$HOME/.bash_profile" 2>/dev/null; then
   printf '\n%s\nsource "%s/login.sh"\n' "$marker" "$state" >> "$HOME/.bash_profile"
 fi
-echo "[setup +${SECONDS}s] Nix and all development shells ready"
+echo "[setup +${SECONDS}s] Setup complete; app-specific shells are available on demand"
