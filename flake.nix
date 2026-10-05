@@ -22,7 +22,7 @@
     flake = false;
   };
   inputs.nxtui = {
-    url = "github:mbrock/nxtui/0b9b3bcb6b688bbeb89ef55169884f699d902432";
+    url = "github:mbrock/nxtui/6c1bd565dca48dd3fc1df8647fd48bc1c65495f9";
     flake = false;
   };
   outputs =

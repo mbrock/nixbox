@@ -56,9 +56,17 @@ Wine, with zero server assertion failures. The first exact-package Xbox run
 on 2026-10-05 executed 89 remote cases: **88 passed and one failed**, with the
 localhost-only wrong-SAN case explicitly skipped. The failed case was plain
 `ws` send cancellation (`send did not cancel`); the corresponding `wss` case
-and all other cases passed. That assertion did not distinguish early send
-completion, another send error or a timer error, so the cause is not yet
-established. This is not a green hardware suite. The
+and all other cases passed.
+
+The diagnostic pin adds separate send/timer outcomes and elapsed time without
+changing the runtime or strict assertion. Paired Xbox runs against the original
+and receive-buffer-constrained fixtures each still returned **89/1**. In both,
+the 16 MiB plaintext send completed in 90 ms and cancelled its 2000 ms timer;
+the encrypted send cancelled in 2005 ms after its timer completed. The failure
+is therefore an unmet pending-send precondition in these runs, not evidence of
+ignored cancellation. The underlying buffering behavior is not established,
+and plaintext send-cancellation remains unverified on hardware. This is not a
+green hardware suite. The
 [verification thread](https://ampcode.com/threads/T-01a10a83-643e-70c7-9fad-afd92b717fc2)
 contains the exact-package report and preserved failure evidence.
 
