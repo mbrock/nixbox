@@ -124,6 +124,7 @@ to add ports.
 | `nix build .#toolchain` | Standalone build and packaging tools |
 | `nix build .#luau-xbox` | Static Luau VM and bytecode compiler |
 | `nix build .#zlib-xbox` | Static zlib and headers |
+| `nix build .#nxtrt-iocp-xbox` | NXT's C++23 coroutine runtime and UWP IOCP backend |
 | `nix build .#hello` | The XAML sample's package |
 | `nix run .#deploy-hello` | Deploy it to the console |
 | `nix develop .#hello` | Its incremental build environment |

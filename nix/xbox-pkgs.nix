@@ -77,6 +77,8 @@ let
     # Reuse Nixpkgs' SDL3 recipe with the fork's C++/WinRT UWP backend.
     sdl3 = final.callPackage ./sdl3.nix { sdl3 = prev.sdl3; };
     SDL3 = final.sdl3;
+    # NXT owns the portable runtime's build and installed consumer check.
+    nxtrt-iocp = final.callPackage (inputs.nxtui + "/nix/iocp.nix") { };
     luau = import ./luau.nix {
       inherit lib;
       inherit (final) stdenv;

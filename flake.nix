@@ -21,6 +21,10 @@
     url = "github:microsoft/winmd/0f1eae3bfa63fa2ba3c2912cbfe72a01db94cc5a";
     flake = false;
   };
+  inputs.nxtui = {
+    url = "github:mbrock/nxtui/c982b6e6d6dbf040d3d0d9b67abfee3b3da3b443";
+    flake = false;
+  };
   outputs =
     inputs:
     let
@@ -122,6 +126,7 @@
               sdl3-image-xbox = pkgsXbox.SDL3_image;
               sdl3-ttf-xbox = pkgsXbox.SDL3_ttf;
               harfbuzz-xbox = pkgsXbox.harfbuzz;
+              nxtrt-iocp-xbox = pkgsXbox.nxtrt-iocp;
               xbox-cxx-headers = xbox.cxxHeaders;
               xbox-cc = xbox.xboxCC;
             };
@@ -154,6 +159,7 @@
             zlib-xbox = pkgsXbox.zlib;
             hello-xbox = pkgsXbox.hello;
             luau-xbox = pkgsXbox.luau;
+            nxtrt-iocp-xbox = pkgsXbox.nxtrt-iocp;
           }
           // withWine {
             inherit hello;

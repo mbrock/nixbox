@@ -33,6 +33,23 @@
         "type": "github"
       }
     },
+    "nxtui": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1791157970,
+        "narHash": "sha256-/KzBYzlnrUrKhIr4sHjFu7gOYg7tjxzB7JYXbp9wv0Y=",
+        "owner": "mbrock",
+        "repo": "nxtui",
+        "rev": "c982b6e6d6dbf040d3d0d9b67abfee3b3da3b443",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mbrock",
+        "repo": "nxtui",
+        "rev": "c982b6e6d6dbf040d3d0d9b67abfee3b3da3b443",
+        "type": "github"
+      }
+    },
     "openappx": {
       "flake": false,
       "locked": {
@@ -54,6 +71,7 @@
       "inputs": {
         "cppwinrt": "cppwinrt",
         "nixpkgs": "nixpkgs",
+        "nxtui": "nxtui",
         "openappx": "openappx",
         "uwp-crossbuild": "uwp-crossbuild",
         "winmd": "winmd"

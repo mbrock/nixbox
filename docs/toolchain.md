@@ -74,6 +74,26 @@ fixes. The [configure experiment notes](../nix/experiments/hello-configure.txt)
 explain the failures that led to them. Hello uses console CRT startup and is
 not an Xbox-launchable UWP application.
 
+## NXT coroutine runtime
+
+`pkgsXbox.nxtrt-iocp` builds the pinned [NXT](https://github.com/mbrock/nxtui)
+C++23 coroutine core and its Windows/UWP IOCP backend using NXT's own package
+recipe. The source input is non-flake, avoiding a dependency cycle with NXT's
+own nixbox cross-build input.
+
+```sh
+nix build .#nxtrt-iocp-xbox
+```
+
+The package installs `nxtrt-iocp.lib`, runtime headers, the `nxtrt-iocp`
+pkg-config target, and `iocp-tests.exe`. Its build also cross-links a consumer
+against the installed headers and pkg-config metadata; `nix flake check`
+includes this build. Target executables are not run on the Linux build host.
+
+This pin contains the runtime only, not yet the DNS/HTTP/TLS transport or the
+graphical UI backend. Those are being ported in NXT before integration into
+an Xbox agent-chat app.
+
 ## Pinned inputs
 
 | Component | Version |
