@@ -82,6 +82,9 @@
           game = import ./templates/game/game.nix xboxLib;
           hello = import ./example/hello.nix xboxLib;
           sdlgame = import ./templates/sdl/game.nix xboxLib;
+          ricochet = import ./games/ricochet/game.nix xboxLib;
+          ricochet-native = import ./games/ricochet/native.nix pkgs;
+          supertux = import ./ports/supertux/game.nix xboxLib;
           d3d12caps = import ./probes/d3d12-caps/probe.nix xboxLib;
           # Wine runs midlrt for the XAML sample and MSBuild for the .vcxproj
           # route. Nixpkgs has no Wine for Apple silicon.
@@ -102,11 +105,23 @@
             }
             // {
               default = if hasWine then hello else game;
-              inherit game sdlgame d3d12caps;
+              inherit
+                game
+                sdlgame
+                ricochet
+                ricochet-native
+                supertux
+                d3d12caps
+                ;
               zlib-xbox = pkgsXbox.zlib;
               hello-xbox = pkgsXbox.hello;
               luau-xbox = pkgsXbox.luau;
               sdl3-xbox = pkgsXbox.SDL3;
+              box2d-xbox = pkgsXbox.box2d;
+              imgui-xbox = pkgsXbox.imgui;
+              sdl3-image-xbox = pkgsXbox.SDL3_image;
+              sdl3-ttf-xbox = pkgsXbox.SDL3_ttf;
+              harfbuzz-xbox = pkgsXbox.harfbuzz;
               xbox-cxx-headers = xbox.cxxHeaders;
               xbox-cc = xbox.xboxCC;
             };
@@ -119,6 +134,8 @@
             };
             deploy-game = app.mkDeploy game;
             deploy-sdlgame = app.mkDeploy sdlgame;
+            deploy-ricochet = app.mkDeploy ricochet;
+            deploy-supertux = app.mkDeploy supertux;
             deploy-d3d12caps = app.mkDeploy d3d12caps;
           }
           // withWine { deploy-hello = app.mkDeploy hello; };
@@ -127,7 +144,13 @@
               inherit pkgs llvmPackages;
               compiler = xbox.xboxCC;
             };
-            inherit game sdlgame;
+            inherit
+              game
+              sdlgame
+              ricochet
+              ricochet-native
+              supertux
+              ;
             zlib-xbox = pkgsXbox.zlib;
             hello-xbox = pkgsXbox.hello;
             luau-xbox = pkgsXbox.luau;
@@ -139,6 +162,8 @@
           devShells = {
             game = game.devShell;
             sdlgame = sdlgame.devShell;
+            ricochet = ricochet.devShell;
+            supertux = supertux.devShell;
             d3d12caps = d3d12caps.devShell;
           }
           // withWine {

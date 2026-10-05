@@ -76,6 +76,25 @@ takes an ordinary derivation, using any build system and any `pkgsXbox`
 libraries, and produces an installable package. No Visual Studio project or
 Wine is involved. See [building apps](docs/apps.md).
 
+## Game playground
+
+Two larger experiments live alongside the templates:
+
+- **Ricochet** — an original C++/Box2D cannonball arena with SDL3 rendering,
+  an ImGui HUD, controller input, and native-host physics tests.
+- **SuperTux** — a pinned SDL3-based existing-game port, with reusable UWP
+  adaptations for its image, text, audio and filesystem dependencies.
+
+```sh
+./build ricochet
+./build supertux
+nix run .#ricochet-native       # play/test the original game on the build host
+```
+
+These are new cross-build experiments, **not yet verified on Xbox**. See
+[the game guide](docs/games.md) for controls, deployment, portability notes and
+the SDL3 GPU / OpenLara follow-ups.
+
 ## Nixpkgs, targeting Xbox
 
 `pkgsXbox` is a Nixpkgs cross package set with a custom MSVC/UWP toolchain.

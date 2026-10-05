@@ -59,17 +59,21 @@ let
   };
   # The SDK implements MSVC exception handling, not the libunwind API. Keep
   # these packages inspectable for availableOn checks, but reject builds.
-  unsupportedUnwinder = package: package.overrideAttrs (old: {
-    meta = old.meta // {
-      badPlatforms = (old.meta.badPlatforms or [ ]) ++ [ platform.system ];
-    };
-  });
+  unsupportedUnwinder =
+    package:
+    package.overrideAttrs (old: {
+      meta = old.meta // {
+        badPlatforms = (old.meta.badPlatforms or [ ]) ++ [ platform.system ];
+      };
+    });
   xboxOverlay = final: prev: {
     xboxCxxHeaders = cxxHeaders;
     libunwind = unsupportedUnwinder prev.libunwind;
-    llvmPackages = prev.${llvmPackageSet}.overrideScope (llvmFinal: llvmPrev: {
-      libunwind = unsupportedUnwinder llvmPrev.libunwind;
-    });
+    llvmPackages = prev.${llvmPackageSet}.overrideScope (
+      llvmFinal: llvmPrev: {
+        libunwind = unsupportedUnwinder llvmPrev.libunwind;
+      }
+    );
     # Reuse Nixpkgs' SDL3 recipe with the fork's C++/WinRT UWP backend.
     sdl3 = final.callPackage ./sdl3.nix { sdl3 = prev.sdl3; };
     SDL3 = final.sdl3;
@@ -102,6 +106,14 @@ let
           --replace-fail '${"$"}{exec_prefix}/@CMAKE_INSTALL_LIBDIR@' '@CMAKE_INSTALL_FULL_LIBDIR@' \
           --replace-fail '${"$"}{exec_prefix}/@CMAKE_INSTALL_INCLUDEDIR@' '@CMAKE_INSTALL_FULL_INCLUDEDIR@' \
           --replace-fail '-lz' '-lzs'
+        # Unqualified find_package(ZLIB CONFIG) must not import a shared
+        # target we deliberately do not build.
+        substituteInPlace zlibConfig.cmake.in \
+          --replace-fail 'set(_ZLIB_supported_components "shared" "static")' 'set(_ZLIB_supported_components "static")' \
+          --replace-fail 'endif(ZLIB_FIND_COMPONENTS)' 'endif(ZLIB_FIND_COMPONENTS)
+        if(NOT TARGET ZLIB::ZLIB)
+          add_library(ZLIB::ZLIB ALIAS ZLIB::ZLIBSTATIC)
+        endif()'
       '';
       cmakeFlags = (old.cmakeFlags or [ ]) ++ [
         "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY"
@@ -111,7 +123,10 @@ let
         "-DZLIB_BUILD_TESTING=OFF"
       ];
       doCheck = false; # The target compression/decompression check runs on Xbox.
-      postInstall = "";
+      # FindZLIB searches for z.lib, not upstream's Windows static name zs.lib.
+      postInstall = ''
+        ln -s zs.lib "$out/lib/z.lib"
+      '';
       postFixup = ''
         test -f "$out/lib/zs.lib"
         ${llvmPackages.llvm}/bin/llvm-readobj --file-headers "$out/lib/zs.lib" > "$TMPDIR/zlib-headers"
@@ -133,19 +148,29 @@ let
           (args: {
             # The SDK has release CRT libraries only. Apply this to every
             # CMake package, while allowing an explicit package override.
-            cmakeFlags = [ "-DCMAKE_TRY_COMPILE_CONFIGURATION=Release" ] ++ (args.cmakeFlags or [ ]);
+            cmakeFlags = [
+              "-DCMAKE_TRY_COMPILE_CONFIGURATION=Release"
+              "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW"
+              "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+            ]
+            ++ (args.cmakeFlags or [ ]);
           })
-          (pkgs.stdenvAdapters.makeStaticLibraries (
-            # Some recipes use optionalDrvAttr and thus supply null here.
-            # makeStaticLibraries expects a Boolean, even for spliced packages
-            # that are evaluated but will actually build on the Linux side.
-            pkgs.stdenvAdapters.overrideMkDerivationArgs
-              (args: {
+          (
+            pkgs.stdenvAdapters.makeStaticLibraries (
+              # Some recipes use optionalDrvAttr and thus supply null here.
+              # makeStaticLibraries expects a Boolean, even for spliced packages
+              # that are evaluated but will actually build on the Linux side.
+              pkgs.stdenvAdapters.overrideMkDerivationArgs (args: {
                 dontAddStaticConfigureFlags = (args.dontAddStaticConfigureFlags or false) == true;
-              })
-              (baseStdenv.override { cc = xboxCC; })
-          ));
-      crossOverlays = [ xboxOverlay ] ++ crossOverlays;
+              }) (baseStdenv.override { cc = xboxCC; })
+            )
+          );
+      crossOverlays = [
+        xboxOverlay
+        (import ./arcade-libraries.nix)
+        (import ./supertux-libraries.nix)
+      ]
+      ++ crossOverlays;
     };
   pkgsXbox = mkPkgsXbox { };
 in

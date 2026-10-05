@@ -1,0 +1,33 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -54,7 +54,7 @@
+     set(WINRT TRUE)
+ endif()
+ 
+-if(WINRT)
++if(WIN32)
+     list(APPEND PHYSFS_CPP_SRCS src/physfs_platform_winrt.cpp)
+ endif()
+ 
+--- a/src/physfs_platform_winrt.cpp
++++ b/src/physfs_platform_winrt.cpp
+@@ -23,13 +23,17 @@
+ #include <windows.h>
+ 
++#include <winrt/Windows.ApplicationModel.h>
++#include <winrt/Windows.Storage.h>
+ #include "physfs_internal.h"
+ 
+ const void *__PHYSFS_winrtCalcBaseDir(void)
+ {
+-    return Windows::ApplicationModel::Package::Current->InstalledLocation->Path->Data();
++    static const auto path = winrt::Windows::ApplicationModel::Package::Current().InstalledLocation().Path();
++    return path.c_str();
+ } /* __PHYSFS_winrtCalcBaseDir */
+ 
+ const void *__PHYSFS_winrtCalcPrefDir(void)
+ {
+-    return Windows::Storage::ApplicationData::Current->LocalFolder->Path->Data();
++    static const auto path = winrt::Windows::Storage::ApplicationData::Current().LocalFolder().Path();
++    return path.c_str();
+ } /* __PHYSFS_winrtCalcBaseDir */

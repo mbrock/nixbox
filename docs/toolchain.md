@@ -18,6 +18,9 @@ It uses Nixpkgs' `makeStaticLibraries` adapter for Autoconf, CMake, and Meson
 static-library defaults. `hostPlatform.isStatic` remains false: Windows supports
 DLLs. CRT linkage and library-specific build switches are separate settings.
 CMake link probes default to Release because the pinned SDK has no debug CRT.
+CMake also defaults to policy CMP0091 NEW and the `MultiThreaded` static CRT;
+packages may explicitly override these defaults, but must then supply their
+runtime requirements.
 
 The package compiler does not force-include compatibility headers, so configure
 probes see only their explicit includes. The application build pipeline applies
@@ -43,10 +46,18 @@ and direct build requests fail at evaluation. Native Linux packages are unaffect
 
 | Package | Adaptation | Validation |
 | --- | --- | --- |
-| zlib 1.3.2 | Upstream CMake build; static `zs.lib`; corrected pkg-config paths | AMD64 COFF archive check and Xbox compression round-trip |
+| zlib 1.3.2 | Upstream CMake build; static `zs.lib` plus `z.lib` discovery alias; corrected pkg-config and static CMake targets | AMD64 COFF archive check and Xbox compression round-trip |
 | Luau 0.738 | VM and bytecode compiler only; static CRT; availability-based unwinder selection | Wine gameplay test and real Xbox script execution |
 | GNU Hello 2.12.3 | UWP-compatible program name, getopt, handle, and file-opening code; NLS disabled | Six behavior checks under Wine |
 | SDL3 3.4.16 | Nixpkgs recipe overridden with the UWP fork and C++/WinRT patch; static CRT and library | SDL template build and real Xbox rendering/gamepad input |
+| Box2D 3.1.1 | Static library, scalar math, no desktop samples | Ricochet cross-build and native Release physics tests |
+| ImGui | SDL3 + SDLRenderer3 backends, scalar math; no GLFW/OpenGL/GPU | Ricochet cross-build and inspected native rendering |
+
+[nix/arcade-libraries.nix](../nix/arcade-libraries.nix) owns the Box2D and ImGui
+adaptations. [nix/supertux-libraries.nix](../nix/supertux-libraries.nix) owns the
+image/text/audio/filesystem dependency ports. Both are applied by `mkPkgsXbox`,
+so games and external consumers share the same recipes. See the
+[game guide](games.md) for their limitations and Xbox runtime verification status.
 
 [nix/luau.nix](../nix/luau.nix) inherits Nixpkgs' native CMake. It builds the VM
 and compiler targets and installs their libraries and headers. CLI tools, native
