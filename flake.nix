@@ -90,6 +90,7 @@
           ricochet-native = import ./games/ricochet/native.nix pkgs;
           supertux = import ./ports/supertux/game.nix xboxLib;
           d3d12caps = import ./probes/d3d12-caps/probe.nix xboxLib;
+          swapchain = import ./probes/swapchain/probe.nix xboxLib;
           nxt-network = import ./probes/nxt-network/probe.nix {
             xbox = xboxLib;
             nxtuiSource = inputs.nxtui;
@@ -136,6 +137,7 @@
                 ricochet-native
                 supertux
                 d3d12caps
+                swapchain
                 nxt-network
                 nxt-websocket
                 nxt-chat
@@ -172,6 +174,7 @@
             deploy-ricochet = app.mkDeploy ricochet;
             deploy-supertux = app.mkDeploy supertux;
             deploy-d3d12caps = app.mkDeploy d3d12caps;
+            deploy-swapchain = app.mkDeploy swapchain;
             deploy-nxt-network = app.mkDeploy nxt-network;
             deploy-nxt-websocket = app.mkDeploy nxt-websocket;
             deploy-nxt-chat = app.mkDeploy nxt-chat;
@@ -225,6 +228,7 @@
             ricochet = ricochet.devShell;
             supertux = supertux.devShell;
             d3d12caps = d3d12caps.devShell;
+            swapchain = swapchain.devShell;
             nxt-network = nxt-network.devShell;
             nxt-websocket = nxt-websocket.devShell;
             nxt-chat = nxt-chat.devShell;
