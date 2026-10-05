@@ -37,7 +37,9 @@ final: prev: {
       sdl3 = final.SDL3;
     }).overrideAttrs
       (old: {
-        buildInputs = [
+        buildInputs = [ ]; # Drop disabled upstream SVG/GLib dependencies.
+        # The static installed CMake target and .pc require these downstream.
+        propagatedBuildInputs = [
           final.SDL3
           final.freetype
           final.harfbuzz

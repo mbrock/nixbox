@@ -95,6 +95,28 @@ Both have real Xbox launch, rendering and remote-keyboard gameplay checks. See
 [the game guide](docs/games.md) for controls, deployment, verification coverage,
 remaining audio/save/controller checks, and the SDL3 GPU / OpenLara follow-ups.
 
+## NXT Agent chat
+
+`nxt-chat` connects NXT's C++ coroutine/IOCP transport to its graphical chat
+view: live **GPT-6 Luna**, streaming text and multi-turn context. Layout keeps
+fractional character/line rhythm; SDL3 Renderer and SDL3_ttf/HarfBuzz paint
+shaped text and rectangles rather than a terminal glyph raster.
+
+```sh
+./build nxt-chat
+nix run .#deploy-nxt-chat
+```
+
+The package contains public CA roots and a font, **never an API key**.
+Provision the key at runtime through Device Portal; see
+[the chat app guide](apps/nxt-chat/README.md) for paths, controls and limits.
+The separate `nxt-network` diagnostic has passed networking/cancellation and
+two real streamed Luna turns on Xbox. The final chat package has also passed
+a real greeting and context-dependent keyboard follow-up on the console;
+the initial integration additionally exercised cancellation/drain/recovery.
+
+![NXT Agent chat running on Xbox with real GPT-6 Luna replies](docs/assets/nxt-chat.png)
+
 ## Nixpkgs, targeting Xbox
 
 `pkgsXbox` is a Nixpkgs cross package set with a custom MSVC/UWP toolchain.
@@ -124,7 +146,9 @@ to add ports.
 | `nix build .#toolchain` | Standalone build and packaging tools |
 | `nix build .#luau-xbox` | Static Luau VM and bytecode compiler |
 | `nix build .#zlib-xbox` | Static zlib and headers |
-| `nix build .#nxtrt-iocp-xbox` | NXT's C++23 coroutine runtime and UWP IOCP backend |
+| `nix build .#nxtrt-iocp-xbox` | NXT's C++23 runtime, IOCP networking, HTTP/TLS and Responses transport |
+| `nix build .#nxtui-sdl-xbox` | Renderer-neutral character/line layouts and SDL3_ttf painting |
+| `nix build .#nxt-chat` | Graphical GPT-6 Luna chat app; runtime credential required |
 | `nix build .#hello` | The XAML sample's package |
 | `nix run .#deploy-hello` | Deploy it to the console |
 | `nix develop .#hello` | Its incremental build environment |

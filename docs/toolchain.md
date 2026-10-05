@@ -74,25 +74,39 @@ fixes. The [configure experiment notes](../nix/experiments/hello-configure.txt)
 explain the failures that led to them. Hello uses console CRT startup and is
 not an Xbox-launchable UWP application.
 
-## NXT coroutine runtime
+## NXT runtime, networking and graphical UI
 
 `pkgsXbox.nxtrt-iocp` builds the pinned [NXT](https://github.com/mbrock/nxtui)
-C++23 coroutine core and its Windows/UWP IOCP backend using NXT's own package
-recipe. The source input is non-flake, avoiding a dependency cycle with NXT's
-own nixbox cross-build input.
+C++23 coroutine runtime, Windows/UWP IOCP backend, DNS, sockets, HTTP/SSE and
+TLS using NXT's own package recipe. The source input is non-flake, avoiding a
+dependency cycle with NXT's own nixbox cross-build input.
 
 ```sh
 nix build .#nxtrt-iocp-xbox
+nix build .#nxtui-sdl-xbox
+./build nxt-network
+./build nxt-chat
 ```
 
-The package installs `nxtrt-iocp.lib`, runtime headers, the `nxtrt-iocp`
-pkg-config target, and `iocp-tests.exe`. Its build also cross-links a consumer
-against the installed headers and pkg-config metadata; `nix flake check`
-includes this build. Target executables are not run on the Linux build host.
+The network package installs `nxtrt-iocp.lib`, public runtime/network/AI
+headers, the `nxtrt-iocp` pkg-config target, `iocp-tests.exe` and
+`network-probe.exe`. TLS uses NXT's implementation with static UWP OpenSSL
+3.5.8 libcrypto for mandatory chain/SAN verification against an explicit PEM
+CA bundle. Boost headers, zlib and libcrypto propagate to downstream builds.
 
-This pin contains the runtime only, not yet the DNS/HTTP/TLS transport or the
-graphical UI backend. Those are being ported in NXT before integration into
-an Xbox agent-chat app.
+`pkgsXbox.nxtui-sdl` enables the separate `nxtui-sdl` pkg-config target.
+Layouts use fractional character/line units and emit clipped rectangles and
+shaped glyph runs, not a glyph-cell raster. Painting uses SDL3 Renderer and
+SDL3_ttf/HarfBuzz, not SDL GPU. Static SDL3_ttf propagates FreeType/HarfBuzz
+dependencies so its installed CMake and pkg-config consumers work in isolation.
+
+The `nxt-chat` app is an installed CMake/pkg-config consumer; the separate
+`checks.x86_64-linux.nxtui-sdl-consumer` check tests direct static pkg-config
+linkage without private dependency paths. These are cross-link checks, not
+execution on the Linux build host. The SDL-hosted `nxt-network` probe has also
+passed DNS, buffered sockets, native DNS cancellation/draining and two real
+streamed `gpt-6-luna` turns on Xbox. See [the chat app](../apps/nxt-chat/README.md)
+for runtime credential provisioning and controls.
 
 ## Pinned inputs
 

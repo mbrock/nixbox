@@ -22,7 +22,7 @@
     flake = false;
   };
   inputs.nxtui = {
-    url = "github:mbrock/nxtui/c982b6e6d6dbf040d3d0d9b67abfee3b3da3b443";
+    url = "github:mbrock/nxtui/54e888fecee1478590ecef159c5b272642d0282c";
     flake = false;
   };
   outputs =
@@ -90,6 +90,14 @@
           ricochet-native = import ./games/ricochet/native.nix pkgs;
           supertux = import ./ports/supertux/game.nix xboxLib;
           d3d12caps = import ./probes/d3d12-caps/probe.nix xboxLib;
+          nxt-network = import ./probes/nxt-network/probe.nix {
+            xbox = xboxLib;
+            nxtuiSource = inputs.nxtui;
+          };
+          nxt-chat = import ./apps/nxt-chat/app.nix {
+            xbox = xboxLib;
+            nxtuiSource = inputs.nxtui;
+          };
           # Wine runs midlrt for the XAML sample and MSBuild for the .vcxproj
           # route. Nixpkgs has no Wine for Apple silicon.
           hasWine = pkgs.stdenv.hostPlatform.isLinux;
@@ -116,6 +124,8 @@
                 ricochet-native
                 supertux
                 d3d12caps
+                nxt-network
+                nxt-chat
                 ;
               zlib-xbox = pkgsXbox.zlib;
               hello-xbox = pkgsXbox.hello;
@@ -127,6 +137,7 @@
               sdl3-ttf-xbox = pkgsXbox.SDL3_ttf;
               harfbuzz-xbox = pkgsXbox.harfbuzz;
               nxtrt-iocp-xbox = pkgsXbox.nxtrt-iocp;
+              nxtui-sdl-xbox = pkgsXbox.nxtui-sdl;
               xbox-cxx-headers = xbox.cxxHeaders;
               xbox-cc = xbox.xboxCC;
             };
@@ -142,6 +153,8 @@
             deploy-ricochet = app.mkDeploy ricochet;
             deploy-supertux = app.mkDeploy supertux;
             deploy-d3d12caps = app.mkDeploy d3d12caps;
+            deploy-nxt-network = app.mkDeploy nxt-network;
+            deploy-nxt-chat = app.mkDeploy nxt-chat;
           }
           // withWine { deploy-hello = app.mkDeploy hello; };
           checks = {
@@ -155,11 +168,14 @@
               ricochet
               ricochet-native
               supertux
+              nxt-network
+              nxt-chat
               ;
             zlib-xbox = pkgsXbox.zlib;
             hello-xbox = pkgsXbox.hello;
             luau-xbox = pkgsXbox.luau;
             nxtrt-iocp-xbox = pkgsXbox.nxtrt-iocp;
+            nxtui-sdl-consumer = import ./nix/check-nxtui-sdl.nix { xbox = xboxLib; };
           }
           // withWine {
             inherit hello;
@@ -171,6 +187,8 @@
             ricochet = ricochet.devShell;
             supertux = supertux.devShell;
             d3d12caps = d3d12caps.devShell;
+            nxt-network = nxt-network.devShell;
+            nxt-chat = nxt-chat.devShell;
           }
           // withWine {
             hello = hello.devShell;

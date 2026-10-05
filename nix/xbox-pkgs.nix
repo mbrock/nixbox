@@ -78,7 +78,24 @@ let
     sdl3 = final.callPackage ./sdl3.nix { sdl3 = prev.sdl3; };
     SDL3 = final.sdl3;
     # NXT owns the portable runtime's build and installed consumer check.
-    nxtrt-iocp = final.callPackage (inputs.nxtui + "/nix/iocp.nix") { };
+    openssl-uwp = final.callPackage (inputs.nxtui + "/nix/openssl-uwp.nix") { };
+    nxtrt-iocp = final.callPackage (inputs.nxtui + "/nix/iocp.nix") {
+      cryptoLibrary = final.openssl-uwp;
+      # The transport uses Boost headers, not its POSIX libraries.
+      boost = final.buildPackages.boost;
+    };
+    # Keep the network-only package light; graphical consumers opt into SDL.
+    nxtui-sdl = final.nxtrt-iocp.overrideAttrs (old: {
+      pname = "nxtui-sdl";
+      propagatedBuildInputs = old.propagatedBuildInputs ++ [
+        final.SDL3
+        final.SDL3_ttf
+      ];
+      mesonFlags = builtins.filter (flag: flag != "-Dsdl_ui=disabled") old.mesonFlags ++ [
+        "-Dsdl_ui=enabled"
+        "-Ddemo=false"
+      ];
+    });
     luau = import ./luau.nix {
       inherit lib;
       inherit (final) stdenv;
