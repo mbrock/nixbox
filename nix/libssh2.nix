@@ -22,11 +22,10 @@ libssh2.overrideAttrs (old: {
     "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY"
     "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW"
     "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded"
+    # Upstream's exported include path already prepends INSTALL_PREFIX.
+    "-DCMAKE_INSTALL_INCLUDEDIR=include"
     "-DHAVE_GETTIMEOFDAY=OFF"
     "-DOPENSSL_ROOT_DIR=${openssl-uwp}"
-    # FindOpenSSL's non-MSVC Windows branch only searches libcrypto.lib;
-    # GNU-syntax Clang still uses our MSVC-ABI crypto.lib.
-    "-DLIB_EAY=${openssl-uwp}/lib/crypto.lib"
     "-DCRYPTO_BACKEND=OpenSSL"
     "-DBUILD_SHARED_LIBS=OFF"
     "-DBUILD_STATIC_LIBS=ON"

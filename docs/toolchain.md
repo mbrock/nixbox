@@ -90,22 +90,32 @@ describes the UWP restrictions and independent terminal-state assertions.
 ## NXT runtime, networking and graphical UI
 
 `pkgsXbox.nxtrt-iocp` builds the pinned [NXT](https://github.com/mbrock/nxtui)
-C++23 coroutine runtime, Windows/UWP IOCP backend, DNS, sockets, HTTP/SSE and
-TLS using NXT's own package recipe. The source input is non-flake, avoiding a
-dependency cycle with NXT's own nixbox cross-build input.
+C++23 coroutine runtime, Windows/UWP IOCP backend, DNS, sockets, HTTP/SSE,
+WebSocket and TLS using NXT's own package recipe. The source input is non-flake,
+avoiding a dependency cycle with NXT's own nixbox cross-build input.
 
 ```sh
 nix build .#nxtrt-iocp-xbox
 nix build .#nxtui-sdl-xbox
 ./build nxt-network
+./build nxt-websocket
 ./build nxt-chat
 ```
 
 The network package installs `nxtrt-iocp.lib`, public runtime/network/AI
 headers, the `nxtrt-iocp` pkg-config target, `iocp-tests.exe` and
-`network-probe.exe`. TLS uses NXT's implementation with static UWP OpenSSL
-3.5.8 libcrypto for mandatory chain/SAN verification against an explicit PEM
-CA bundle. Boost headers, zlib and libcrypto propagate to downstream builds.
+`network-probe.exe` / `websocket-probe.exe`. TLS uses NXT's implementation with
+static UWP OpenSSL 3.5.8 libcrypto for mandatory chain/SAN verification against
+an explicit PEM CA bundle. Boost headers, zlib and libcrypto propagate to
+downstream builds.
+
+`<nxtrt/websocket.hpp>` adds owned text/binary/control events, masked client
+frames, bounded fragmentation and automatic Ping/Close replies over the same
+DNS/socket/TLS runtime. Operations are **serialized**, including send versus
+receive; a background reader cannot coexist with interactive sends. Cancelling
+an operation drains it and aborts that connection. See the
+[WebSocket guide](../probes/nxt-network/README.md) for API boundaries, fixtures
+and Xbox provisioning.
 
 `pkgsXbox.nxtui-sdl` enables the separate `nxtui-sdl` pkg-config target.
 Layouts use fractional character/line units and emit clipped rectangles and

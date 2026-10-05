@@ -1,9 +1,20 @@
-{ xbox, nxtuiSource }:
+{
+  xbox,
+  nxtuiSource,
+  websocket ? false,
+}:
+let
+  name = if websocket then "nxt-websocket" else "nxt-network";
+in
 xbox.mkXboxApp {
-  pname = "nxt-network";
+  pname = name;
   version = "0.1.0";
-  displayName = "NXT Xbox networking";
-  description = "DNS, sockets, TLS and streamed GPT-6 Luna transport checks";
+  displayName = if websocket then "NXT Xbox WebSocket" else "NXT Xbox networking";
+  description =
+    if websocket then
+      "Coroutine WebSocket framing, validation and ws/wss transport checks"
+    else
+      "DNS, sockets, TLS and streamed GPT-6 Luna transport checks";
   src = xbox.pkgs.lib.fileset.toSource {
     root = ./.;
     fileset = xbox.pkgs.lib.fileset.unions [
@@ -20,9 +31,12 @@ xbox.mkXboxApp {
     xbox.pkgsXbox.SDL3
     xbox.pkgsXbox.nxtrt-iocp
   ];
-  cmakeFlags = [ "-DNXT_PROBE_SOURCE=${nxtuiSource}/test/network-probe.cpp" ];
+  cmakeFlags = [
+    "-DNXT_PROBE_SOURCE=${nxtuiSource}/test/${if websocket then "websocket" else "network"}-probe.cpp"
+    "-DNXT_WEBSOCKET=${if websocket then "ON" else "OFF"}"
+  ];
   postInstall = ''
-    mkdir -p "$out/share/nxt-network"
-    cp ${xbox.pkgs.cacert}/etc/ssl/certs/ca-bundle.crt "$out/share/nxt-network/ca-bundle.pem"
+    mkdir -p "$out/share/${name}"
+    cp ${xbox.pkgs.cacert}/etc/ssl/certs/ca-bundle.crt "$out/share/${name}/ca-bundle.pem"
   '';
 }

@@ -12,9 +12,11 @@ are disabled. Applications own socket creation and host-key policy.
 nix run .#deploy-ssh-probe
 ```
 
-The isolated consumer uses only libssh2 in `buildInputs` and links with
-`pkg-config --cflags --libs --static libssh2`. Its `ssh-probe.exe` is a portable
-CLI, not an Xbox entry point. The `ssh-probe` app packages the same source in
+The isolated consumer uses only libssh2 in `buildInputs`. It checks both
+`pkg-config --cflags --libs --static libssh2` and CMake's
+`find_package(Libssh2 REQUIRED)` / `Libssh2::libssh2`, including propagated
+crypto/zlib dependencies. Its `ssh-probe.exe` and `ssh-cmake.exe` are portable
+CLIs, not Xbox entry points. The `ssh-probe` app packages the same source in
 an SDL3 host, with `internetClient` and `privateNetworkClientServer` capabilities.
 
 ## Disposable SSH fixture

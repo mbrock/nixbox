@@ -146,7 +146,8 @@ to add ports.
 | `nix build .#toolchain` | Standalone build and packaging tools |
 | `nix build .#luau-xbox` | Static Luau VM and bytecode compiler |
 | `nix build .#zlib-xbox` | Static zlib and headers |
-| `nix build .#nxtrt-iocp-xbox` | NXT's C++23 runtime, IOCP networking, HTTP/TLS and Responses transport |
+| `nix build .#nxtrt-iocp-xbox` | NXT's C++23 runtime, IOCP networking, HTTP/TLS, WebSocket and Responses transport |
+| `nix build .#nxt-websocket` | [ws/wss framing, TLS and cancellation diagnostic](probes/nxt-network/README.md); runtime fixture configuration required |
 | `nix build .#nxtui-sdl-xbox` | Renderer-neutral character/line layouts and SDL3_ttf painting |
 | `nix build .#nxt-chat` | Graphical GPT-6 Luna chat app; runtime credential required |
 | `nix build .#libssh2-xbox` | Static SSH/SFTP library with UWP libcrypto and zlib |

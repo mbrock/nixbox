@@ -22,7 +22,7 @@
     flake = false;
   };
   inputs.nxtui = {
-    url = "github:mbrock/nxtui/54e888fecee1478590ecef159c5b272642d0282c";
+    url = "github:mbrock/nxtui/0b9b3bcb6b688bbeb89ef55169884f699d902432";
     flake = false;
   };
   outputs =
@@ -94,6 +94,11 @@
             xbox = xboxLib;
             nxtuiSource = inputs.nxtui;
           };
+          nxt-websocket = import ./probes/nxt-network/probe.nix {
+            xbox = xboxLib;
+            nxtuiSource = inputs.nxtui;
+            websocket = true;
+          };
           nxt-chat = import ./apps/nxt-chat/app.nix {
             xbox = xboxLib;
             nxtuiSource = inputs.nxtui;
@@ -127,6 +132,7 @@
                 supertux
                 d3d12caps
                 nxt-network
+                nxt-websocket
                 nxt-chat
                 ssh-probe
                 ghostty-vt-probe
@@ -160,6 +166,7 @@
             deploy-supertux = app.mkDeploy supertux;
             deploy-d3d12caps = app.mkDeploy d3d12caps;
             deploy-nxt-network = app.mkDeploy nxt-network;
+            deploy-nxt-websocket = app.mkDeploy nxt-websocket;
             deploy-nxt-chat = app.mkDeploy nxt-chat;
             deploy-ssh-probe = app.mkDeploy ssh-probe;
             deploy-ghostty-vt-probe = app.mkDeploy ghostty-vt-probe;
@@ -177,6 +184,7 @@
               ricochet-native
               supertux
               nxt-network
+              nxt-websocket
               nxt-chat
               ssh-probe
               ghostty-vt-probe
@@ -207,6 +215,7 @@
             supertux = supertux.devShell;
             d3d12caps = d3d12caps.devShell;
             nxt-network = nxt-network.devShell;
+            nxt-websocket = nxt-websocket.devShell;
             nxt-chat = nxt-chat.devShell;
             ssh-probe = ssh-probe.devShell;
             ghostty-vt-probe = ghostty-vt-probe.devShell;
