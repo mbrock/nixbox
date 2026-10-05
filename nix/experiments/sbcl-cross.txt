@@ -1,4 +1,4 @@
-SBCL through pkgsXbox: first build experiment (2026-10-05)
+SBCL through pkgsXbox: cross-build experiments (2026-10-05)
 
 Pinned Nixpkgs recipe/source: SBCL 2.6.8. Linux build host, nixbox's existing
 x86_64-pc-windows-msvc Clang 23 / static Microsoft CRT cross stdenv.
@@ -24,11 +24,11 @@ This is not evidence of an SBCL runtime/compiler failure.
 Second follow-up: disable optional core compression so the build reaches SBCL:
   nix build --impure --file nix/experiments/sbcl-cross.nix --keep-failed -L
 
-The recipe unpacks/patches the pinned source, accepts the native bootstrap SBCL,
-then enters make-config.sh. It chooses sbcl_arch="x86-64" and detects the OS
-using the build host's uname. The generated local-target-features.lisp-expr
-contains :unix :linux :elf :gcc-tls :use-sys-mmap :largefile, despite the C
-compiler being the Windows-targeting x86_64-pc-windows-msvc-clang.
+Before the Win32 changes below, the recipe unpacked/patched the pinned source,
+accepted the native bootstrap SBCL, then entered make-config.sh. It chose
+sbcl_arch="x86-64" and detected the OS using the build host's uname. The generated
+local-target-features.lisp-expr contained :unix :linux :elf :gcc-tls :use-sys-mmap
+:largefile, despite the Windows-targeting x86_64-pc-windows-msvc-clang compiler.
 
 The decisive configuration-helper command and failure are:
   x86_64-pc-windows-msvc-clang -I../src/runtime -Wunused-parameter \
@@ -53,10 +53,75 @@ Source inspection explains the next boundary:
   - make.sh documents separate host and target stages; its one-machine sequence
     is not a turnkey Nixpkgs Linux-to-Windows cross build.
 
-Next useful experiment: configure an explicit x64 Win32 target, keep native
-bootstrap/build tools distinct from target header groveling and runtime stages,
-and supply a Wine execution path where target programs must run. Only then do
-runtime C/assembly compilation and UWP API errors become meaningful evidence.
-Do not fake grovel results, silently compile the Linux backend, or globally mark
-pkgsXbox.sbcl supported. This experiment intentionally remains outside the flake's
-successful packages/checks until a real target build works.
+Win32 follow-up (current reproducer)
+-----------------------------------
+
+sbcl-cross.nix now explicitly selects WindowsNT in make-config.sh, uses the Xbox
+C compiler in Config.x86-64-win32, and runs configuration/feature PE helpers
+under native Wine 11.0 with a private build-local prefix. The perfecthash
+generator is instead compiled with the native Linux C compiler: the bootstrap
+Lisp invokes it on the host. Optional mark-region GC and linkable-runtime mode
+are disabled so the experiment starts with Windows GENCGC and runtime objects.
+
+Configuration and make-host-1.sh complete:
+  //building cross-compiler, and doing first genesis
+  beginning GENESIS, creating headers in "src/runtime/genesis"
+  //entering make-target-1.sh
+
+The generated features include :win32 :sb-thread :sb-safepoint :little-endian
+:ucrt :gencgc, not :linux or :elf. No target feature/grovel answer is fabricated.
+The configuration helpers run under Wine, not on Xbox; their success and CPU
+feature selection are not device validation. :sb-futex was not selected by the
+feature probes and is not forced on.
+
+The first runtime compile exposed MinGW headers absent from Microsoft's CRT:
+unistd.h, sys/time.h, sys/file.h, sys/param.h, and a duplicate timespec definition.
+sbcl-msvc-headers.patch guards Unix-only includes, uses io.h on Windows, retains
+UCRT's timespec, defines MSVC's missing ssize_t, uses MAX_PATH in the Windows
+dirname buffer, and includes process.h/intrin.h where their APIs are used.
+process.h stays local to its consumers: including it in every runtime unit also
+imports UCRT's legacy 'complex' macro, colliding with generated Lisp structures.
+
+With those fixes, 35 runtime object files compile as amd64 COFF, including
+thread.o, x86-64-arch.o, x86-64-assem.o and gencgc.o. make uses -k to collect
+independent errors; it still exits unsuccessfully. The current blockers are:
+
+  - wrap.c includes dirent.h and wraps opendir/readdir/closedir. These are MinGW
+    compatibility facilities, not UCRT headers/functions. Dropping the header
+    or supplying an empty one would not implement these wrappers.
+  - getpid and strcasecmp are undeclared. UCRT gates getpid behind its desktop
+    family; Windows GetCurrentProcessId and UCRT _stricmp are candidate real
+    replacements, not reasons to suppress implicit-declaration errors.
+  - getenv is hidden by UCRT's desktop-family guard despite stdlib.h being
+    included. SBCL uses it for runtime options and diagnostics. This needs an
+    intentional app-container environment/configuration policy.
+  - runtime.c's CommandLineToArgvW and win32-os.c's SetThreadStackGuarantee,
+    AddVectoredExceptionHandler, SHGetFolderPathA and CryptGenRandom are not
+    declared under the existing UWP headers. The earlier Xbox probe verified
+    deliberate desktop VEH imports, not all these desktop services.
+  - SBCL accesses CONTEXT.FloatSave; the Microsoft x64 SDK names the corresponding
+    field FltSave. Register/FP-context adaptation needs to preserve its ABI.
+
+The native thread API and CPUID declaration errors disappeared after adding
+their actual headers. No shared compiler settings, SDK-family restrictions or
+global package-platform metadata were relaxed.
+
+Reproduce from the repository root (new patch files must be git-added):
+  source bin/nix-cache-options
+  nix build "${nix_options[@]}" --impure --file nix/experiments/sbcl-cross.nix \
+    --keep-failed --out-link build-output/sbcl-cross -L
+
+The final attempted derivation was:
+  /nix/store/1nfnbs0vnz4ywlrjks0wwkvn96d2aayj-sbcl-x86_64-pc-windows-msvc-2.6.8.drv
+It fails in make-target-1.sh's runtime compilation, before linking, target header
+groveling, make-host-2.sh or target cold/warm initialization. The groveler's Wine
+execution path is wired but not yet exercised. The remaining target stages and
+installation also need adaptation; this is not a finished package recipe.
+No SBCL executable or target Lisp core was produced, and no SBCL build was
+deployed to Xbox. The experiment remains outside successful flake packages/checks.
+
+Next useful step: a localized MSVC/UWP runtime adaptation for these concrete
+boundaries, followed by translating the GNU PE export/linker configuration and
+running the target initialization under Wine. Only a real runtime/core wrapped
+in an Xbox app can establish SBCL-on-console success. Do not fake grovel results,
+silently compile the Linux backend, or globally mark pkgsXbox.sbcl supported.

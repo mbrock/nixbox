@@ -1,0 +1,296 @@
+diff --git a/src/runtime/coreparse.c b/src/runtime/coreparse.c
+index 99376c2..d523e17 100644
+--- a/src/runtime/coreparse.c
++++ b/src/runtime/coreparse.c
+@@ -23,11 +23,15 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#ifndef _WIN32
+ #include <sys/file.h>
++#endif
+ #include <sys/types.h>
+ #include <sys/stat.h>
+ #include <fcntl.h>
++#ifndef _WIN32
+ #include <unistd.h>
++#endif
+ 
+ #include "os.h"
+ #include "runtime.h"
+diff --git a/src/runtime/globals.c b/src/runtime/globals.c
+index d237f78..42a9770 100644
+--- a/src/runtime/globals.c
++++ b/src/runtime/globals.c
+@@ -15,7 +15,9 @@
+ 
+ #include <stdio.h>
+ #include <sys/types.h>
++#ifndef _WIN32
+ #include <unistd.h>
++#endif
+ 
+ #include "genesis/sbcl.h"
+ #include "runtime.h"
+diff --git a/src/runtime/globals.h b/src/runtime/globals.h
+index 8223a1b..79617b6 100644
+--- a/src/runtime/globals.h
++++ b/src/runtime/globals.h
+@@ -15,7 +15,11 @@
+ #ifndef __ASSEMBLER__
+ # include <stdbool.h>
+ # include <sys/types.h>
++#ifdef _WIN32
++# include <io.h>
++#else
+ # include <unistd.h>
++#endif
+ # include "runtime.h"
+ # include "os.h"
+ #endif
+diff --git a/src/runtime/monitor.c b/src/runtime/monitor.c
+index 299a0df..38b268e 100644
+--- a/src/runtime/monitor.c
++++ b/src/runtime/monitor.c
+@@ -17,12 +17,14 @@
+ #include <stdio.h>
+ #include <sys/types.h>
+ #include <stdlib.h>
+-#include <sys/time.h>
+ #ifndef LISP_FEATURE_WIN32
++#include <sys/time.h>
+ #include <sys/resource.h>
+-#endif
+ #include <signal.h>
+ #include <unistd.h>
++#else
++#include <io.h>
++#endif
+ #include <fcntl.h>
+ 
+ #include "runtime.h"
+diff --git a/src/runtime/pthreads_win32.h b/src/runtime/pthreads_win32.h
+index c90c165..acf0c19 100644
+--- a/src/runtime/pthreads_win32.h
++++ b/src/runtime/pthreads_win32.h
+@@ -40,7 +40,7 @@ typedef int sigset_t;
+ #define SIG_UNBLOCK 2
+ #define SIG_SETMASK 3
+ 
+-#ifndef _TIMESPEC_DEFINED
++#if !defined(_TIMESPEC_DEFINED) && !defined(_MSC_VER)
+ typedef struct timespec {
+   time_t tv_sec;
+   long tv_nsec;
+diff --git a/src/runtime/runtime.c b/src/runtime/runtime.c
+index c0de535..14a982b 100644
+--- a/src/runtime/runtime.c
++++ b/src/runtime/runtime.c
+@@ -26,9 +26,11 @@
+ #include <sys/wait.h>
+ #endif
+ #include <stdlib.h>
++#ifndef LISP_FEATURE_WIN32
+ #include <unistd.h>
+ #include <sys/file.h>
+ #include <sys/param.h>
++#endif
+ #include <sys/stat.h>
+ #include "runtime.h"
+ #ifndef LISP_FEATURE_WIN32
+@@ -41,9 +43,9 @@
+ #include <limits.h>
+ 
+ #include <time.h>
+-#include <sys/time.h> // for gettimeofday
+ 
+ #ifndef LISP_FEATURE_WIN32
++#include <sys/time.h> // for gettimeofday
+ #include <signal.h>
+ #endif
+ 
+diff --git a/src/runtime/save.c b/src/runtime/save.c
+index 8c7a0a3..2cf42f1 100644
+--- a/src/runtime/save.c
++++ b/src/runtime/save.c
+@@ -16,7 +16,9 @@
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <string.h>
++#ifndef _WIN32
+ #include <sys/file.h>
++#endif
+ 
+ #include "genesis/sbcl.h"
+ #ifdef LISP_FEATURE_WIN32
+diff --git a/src/runtime/thread.c b/src/runtime/thread.c
+index 2794088..ea29822 100644
+--- a/src/runtime/thread.c
++++ b/src/runtime/thread.c
+@@ -48,6 +48,10 @@
+ #include "interrupt.h"
+ #include "lispregs.h"
+ 
++#ifdef LISP_FEATURE_WIN32
++#include <process.h>
++#endif
++
+ #ifdef LISP_FEATURE_SB_THREAD
+ 
+ #if defined LISP_FEATURE_OPENBSD || defined LISP_FEATURE_FREEBSD || defined LISP_FEATURE_DRAGONFLY
+diff --git a/src/runtime/thread.h b/src/runtime/thread.h
+index 69b7989..4df070d 100644
+--- a/src/runtime/thread.h
++++ b/src/runtime/thread.h
+@@ -3,7 +3,11 @@
+ 
+ #include <sys/types.h>
+ #include <stdbool.h>
++#ifdef _WIN32
++#include <io.h>
++#else
+ #include <unistd.h>
++#endif
+ #include <stddef.h>
+ #include "genesis/sbcl.h"
+ #include "globals.h"
+diff --git a/src/runtime/traceroot.c b/src/runtime/traceroot.c
+index f1e994f..5ea8bcf 100644
+--- a/src/runtime/traceroot.c
++++ b/src/runtime/traceroot.c
+@@ -18,8 +18,8 @@
+ 
+ #include <stdlib.h>
+ #include <stdio.h>
+-#include <sys/time.h>
+ #ifndef LISP_FEATURE_WIN32
++#include <sys/time.h>
+ #define HAVE_GETRUSAGE 1
+ #endif
+ #ifdef HAVE_GETRUSAGE
+diff --git a/src/runtime/win32-os.c b/src/runtime/win32-os.c
+index 37327c9..f2f20b6 100644
+--- a/src/runtime/win32-os.c
++++ b/src/runtime/win32-os.c
+@@ -29,8 +29,6 @@
+ #include <malloc.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+-#include <sys/param.h>
+-#include <sys/file.h>
+ #include <io.h>
+ #include "genesis/sbcl.h"
+ #include "os.h"
+@@ -43,12 +41,11 @@
+ #include "genesis/primitive-objects.h"
+ 
+ #include <sys/types.h>
+-#include <sys/time.h>
+ #include <sys/stat.h>
+-#include <unistd.h>
+ 
+ #include <math.h>
+ #include <float.h>
++#include <process.h>
+ 
+ #include <excpt.h>
+ #include <errno.h>
+@@ -1266,7 +1263,7 @@ wos_install_interrupt_handlers
+ 
+ char *dirname(char *path)
+ {
+-    static char buf[PATH_MAX + 1];
++    static char buf[MAX_PATH + 1];
+     size_t pathlen = strlen(path);
+     int i;
+ 
+diff --git a/src/runtime/win32-os.h b/src/runtime/win32-os.h
+index 5928f82..f219115 100644
+--- a/src/runtime/win32-os.h
++++ b/src/runtime/win32-os.h
+@@ -22,9 +22,11 @@
+ #include <stdio.h>
+ #include <sys/types.h>
+ #include <string.h>
+-#include <sys/time.h>
+ #include <sys/stat.h>
+-#include <unistd.h>
++#include <io.h>
++#ifdef _MSC_VER
++typedef intptr_t ssize_t;
++#endif
+ 
+ #include "target-arch-os.h"
+ #include "target-arch.h"
+diff --git a/src/runtime/wrap.c b/src/runtime/wrap.c
+index 25bb1cf..b21b189 100644
+--- a/src/runtime/wrap.c
++++ b/src/runtime/wrap.c
+@@ -26,7 +26,11 @@
+ #include <stdlib.h>
+ #include <string.h>
+ #include <ctype.h>
++#ifndef LISP_FEATURE_WIN32
+ #include <unistd.h>
++#else
++#include <io.h>
++#endif
+ #include <errno.h>
+ #include <limits.h>
+ #include <fcntl.h>
+diff --git a/src/runtime/x86-64-arch.c b/src/runtime/x86-64-arch.c
+index 10cff90..7242aec 100644
+--- a/src/runtime/x86-64-arch.c
++++ b/src/runtime/x86-64-arch.c
+@@ -38,6 +38,10 @@
+ #include "core.h"
+ #include "gc.h"
+ 
++#ifdef _MSC_VER
++#include <intrin.h>
++#endif
++
+ #define INT3_INST 0xCC
+ #define INTO_INST 0xCE
+ #define UD2_INST 0x0b0f
+diff --git a/src/runtime/x86-64-win32-os.c b/src/runtime/x86-64-win32-os.c
+index e8d9da7..aa1c6f0 100644
+--- a/src/runtime/x86-64-win32-os.c
++++ b/src/runtime/x86-64-win32-os.c
+@@ -16,10 +16,7 @@
+ 
+ #include <stdio.h>
+ #include <stddef.h>
+-#include <sys/param.h>
+-#include <sys/file.h>
+ #include <sys/types.h>
+-#include <unistd.h>
+ #include <errno.h>
+ 
+ #include "os.h"
+@@ -32,9 +29,7 @@
+ 
+ #include <sys/types.h>
+ #include "runtime.h"
+-#include <sys/time.h>
+ #include <sys/stat.h>
+-#include <unistd.h>
+ #include "thread.h"             /* dynamic_values_bytes */
+ #include "align.h"
+ 
+diff --git a/tools-for-build/grovel-headers.c b/tools-for-build/grovel-headers.c
+index 5ea38e5..eeb6709 100644
+--- a/tools-for-build/grovel-headers.c
++++ b/tools-for-build/grovel-headers.c
+@@ -51,7 +51,11 @@
+ 
+ #include <sys/stat.h>
+ #include <fcntl.h>
++#ifdef _WIN32
++#include <io.h>
++#else
+ #include <unistd.h>
++#endif
+ #include <signal.h>
+ #include <errno.h>
+ #include <time.h>

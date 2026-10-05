@@ -103,13 +103,20 @@ validates the probe's generated instructions, SEH/unwind metadata and assertions
 it is not Xbox policy validation. In particular Wine accepted FromApp RWX
 protection even though Microsoft's documented contract rejects it.
 
-## First SBCL build attempt
+## SBCL cross-build experiments
 
 The pinned Nixpkgs SBCL 2.6.8 recipe was tried through `pkgsXbox`. With a native
-bootstrap Lisp and optional core compression disabled, it reaches SBCL's
-configuration but selects the Linux host OS, then fails linking a target helper
-against `libdl`. No SBCL runtime/core was produced. The
+bootstrap Lisp and optional core compression disabled, the first attempt selected
+the Linux host OS and failed linking a target helper against `libdl`.
+
+The follow-up now explicitly selects Win32, executes configuration helpers under
+Wine, and keeps native build tools separate from target programs. The bootstrap
+cross-compiler and first genesis complete. After initial MSVC-header fixes,
+35 amd64 COFF runtime objects compile, including the assembly, thread code and
+generational collector. Compilation still fails on MinGW directory/CRT facilities,
+Microsoft exception-context field names, and desktop APIs hidden by UWP headers.
+No SBCL executable or target Lisp core was produced or deployed to Xbox. The
 [reproducible experiment](../../nix/experiments/sbcl-cross.nix) and
-[failure notes](../../nix/experiments/sbcl-cross.txt) record the baseline and
-follow-ups. The next build needs explicit Win32 target configuration and separate
-host/target execution stages, not a `dl.lib` shim.
+[build notes](../../nix/experiments/sbcl-cross.txt) record the exact progress and
+remaining boundaries. The next step is a localized MSVC/UWP runtime adaptation,
+not a `dl.lib` shim or relaxing the shared toolchain's API-family settings.
