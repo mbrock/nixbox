@@ -102,6 +102,20 @@ with tempfile.TemporaryDirectory() as tmp:
             raise SystemExit(f"{previous['PackageFullName']} has another publisher; refusing to replace it")
     for previous in existing:
         print(f"Replacing {previous['PackageFullName']}", flush=True)
+        # Stop it first: uninstalling a running app leaves its process
+        # alive and suspended, holding the GPU, and the next launch stalls
+        # behind it.
+        try:
+            portal.stop_app(previous["PackageFullName"])
+        except Exception as error:
+            print(f"Could not stop it ({error}); replacing anyway", flush=True)
+        image = application["Executable"].lower()
+        for _ in range(20):
+            with urllib.request.urlopen(device + "/api/resourcemanager/processes", timeout=30) as response:
+                if not any(p.get("ImageName", "").lower() == image
+                           for p in json.load(response)["Processes"]):
+                    break
+            time.sleep(0.5)
         portal.uninstall(previous["PackageFullName"])
 
     portal.install_certificate(cer)
