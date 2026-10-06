@@ -16,6 +16,14 @@ nix build .#sbcl-runtime -L
 These targets need a Linux build host with Wine. No runtime configuration,
 credentials or network service is needed by the app.
 
+Deployment takes the shared console's lease and waits its turn. After watching
+the app, release it with `nix run .#xbox-lease -- release`. For an observation
+session spanning deployment, report retrieval and process monitoring, wrap the
+whole session in `nix run .#xbox-lease -- run --ttl 300 -- COMMAND...`; the lease
+is renewed during the command and released on exit. See
+[sharing the console](../../docs/development.md#sharing-the-console). Do not
+bypass a `423 Locked` or `428 Precondition Required` response.
+
 ## Checks and reports
 
 The app displays the report from `LocalState/nixbox/sbcl-probe/lisp.txt`.
@@ -64,7 +72,7 @@ RWX allocation/code execution, exception recovery and thread primitives, but
 is not a substitute for this app's Lisp results. Wine passes likewise do not
 establish Xbox policy compatibility or suspend/resume/long-term reliability.
 
-## Xbox result (2026-10-05)
+## Xbox results (2026-10-05 UTC)
 
 The exact directory-corrected package was hash-verified and run on a real Xbox
 Series X through the tailnet-connected Linux runner. Its LocalState report ends
@@ -84,10 +92,18 @@ The hardware-tested package's SHA256 is
 A final rebuild adding the TLSF license has SHA256
 `c8baa1a79cf02a6db2378b86f87d8e5cf6a5335bc20652804cbd9a12a53a04d9`.
 Its executable and probe script are byte-identical to the tested package, but
-its regenerated core differs. That build passes all 14 Wine checks; its separate
-Xbox deployment attempt was blocked before installation by HTTP 409, "Another
-deployment is running." No old report or screenshot is claimed as validation
-of that final package.
+its regenerated core differs, so it was validated separately. An initial Xbox
+attempt was blocked before installation by HTTP 409, "Another deployment is
+running." After updating to the console lease workflow, the exact retained MSIX
+deployed successfully on the first leased attempt, without rebuilding SBCL.
+
+That final package produced a fresh **`COMPLETE: 14 checks, 0 failed`** report.
+PID 3868 remained running in all 70 process samples through 66.06 seconds, with
+readable all-PASS screenshots at five and 65 seconds and no new crash dump or
+WER report. The lease covered deployment, report retrieval, observation and
+crash-flag cleanup, and was released afterward; the subsequent lease status
+showed no holder and an empty queue. The final package also passes all 14 Wine
+checks during the Nix build.
 
 Earlier checkpoints exposed the recursive CRT export, unopened stdio descriptors
 and inaccessible directory ancestors above. None of those failures was hidden
